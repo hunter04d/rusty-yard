@@ -1,33 +1,31 @@
+use crate::shunting_yard::binary_operators::BiOp;
+
 #[derive(Debug)]
 pub enum Token {
-    Plus,
-    Minus,
-    Star,
-    Slash,
     OpenParen,
     ClosedParen,
-    ID(String),
-    Number(f64),
+    Id(String),
+    Num(f64),
     BadToken(String),
 }
 
 #[allow(dead_code)]
 pub fn get_token_text(token: &Token) -> String {
     match token {
-        Token::Plus => String::from("+"),
-        Token::Minus => String::from("-"),
-        Token::Star => String::from("*"),
-        Token::Slash => String::from("/"),
         Token::OpenParen => String::from("("),
         Token::ClosedParen => String::from(")"),
-        Token::ID(s) => s.clone(),
-        Token::Number(n) => n.to_string(),
-        Token::BadToken(s) => format!("<BAD TOKEN>({})", s)
+        Token::Id(s) => s.clone(),
+        Token::Num(n) => n.to_string(),
+        Token::BadToken(s) => format!("<BAD TOKEN>({})", s),
     }
 }
 
 use std::ops::AddAssign;
-pub fn tokenize(input: &str) -> Vec<Token> {
+use crate::shunting_yard::Ctx;
+
+type Match<T> = Option<(T, usize)>;
+
+pub fn tokenize<'a>(input: &str, ctx: &Ctx<'a>) -> Vec<Token> {
     if !input.is_ascii() {
         panic!()
     }
@@ -41,33 +39,32 @@ pub fn tokenize(input: &str) -> Vec<Token> {
         }
         let mut consumed = 1usize;
         let next_token = match ch {
-            '+' => Token::Plus,
-            '-' => Token::Minus,
-            '*' => Token::Star,
-            '/' => Token::Slash,
             '(' => Token::OpenParen,
             ')' => Token::ClosedParen,
             _ => {
-                if let Some((id, n)) = match_id(&input[index..]) {
+                if let Some((bi_op, n)) = match_op(&input[index..], &ctx) {
                     consumed = n;
-                    Token::ID(id)
+                    Token::Id(bi_op)
+                } else if let Some((id, n)) = match_id(&input[index..]) {
+                    consumed = n;
+                    Token::Id(id)
                 } else if let Some((num, n)) = match_number(&input[index..]) {
                     consumed = n;
-                    Token::Number(num)
+                    Token::Num(num)
                 } else {
                     Token::BadToken(ch.to_string())
                 }
             }
         };
-        let mut last_reassigned = false;
+        let mut last_merged = false;
         if !output.is_empty() {
             let last_token = output.last_mut().unwrap();
             if let (Token::BadToken(s1), Token::BadToken(s2)) = (last_token, &next_token) {
-                last_reassigned = true;
+                last_merged = true;
                 s1.add_assign(s2);
             }
         }
-        if !last_reassigned {
+        if !last_merged {
             output.push(next_token);
         }
         if consumed > 1 {
@@ -79,13 +76,19 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     output
 }
 
-fn match_id(text: &str) -> Option<(String, usize)> {
+fn match_id(text: &str) -> Match<String> {
+    let extra_chars: &'static str = "$@_{}[]:-.";
+    let is_extra = |ch: char| extra_chars.chars().any(|v| v == ch);
+    let is_valid_first_char = |ch: char| ch.is_ascii_alphabetic() || is_extra(ch);
+    let is_valid_char = |ch: char| ch.is_ascii_alphanumeric() || is_extra(ch);
+
+
     let mut iterator = text.chars();
     if let Some(ch) = iterator.next() {
-        if ch.is_ascii_alphabetic() {
+        if is_valid_first_char(ch) {
             let mut index = 1usize;
             while let Some(ch) = iterator.next() {
-                if ch.is_ascii_alphanumeric() {
+                if is_valid_char(ch) {
                     index += 1;
                     continue;
                 }
@@ -97,7 +100,20 @@ fn match_id(text: &str) -> Option<(String, usize)> {
     None
 }
 
-fn match_number(text: &str) -> Option<(f64, usize)> {
+fn match_op(text: &str, ctx: &Ctx) -> Match<String> {
+    let matched_bi_op = ctx.bi_ops.iter()
+        .find(|op| text.starts_with(op.token))
+        .map(|op| (op.token.to_string()));
+    let matched_u_op = ctx.u_ops.iter()
+        .find(|op| text.starts_with(op.token))
+        .map(|op| op.token.to_string());
+    matched_bi_op.or(matched_u_op).map(|s| {
+        let u = s.len();
+        (s, u)
+    })
+}
+
+fn match_number(text: &str) -> Match<f64> {
     let mut iterator = text.chars();
     if let Some(ch) = iterator.next() {
         if ch.is_ascii_digit() {
