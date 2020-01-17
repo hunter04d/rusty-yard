@@ -1,25 +1,42 @@
-pub mod binary_operators;
-pub mod unary_operators;
+use std::collections::HashSet;
+
+use functions::Func;
+use operators::{binary, unary};
+use operators::{BiOp, UOp};
+
 pub mod evaluator;
-pub mod tokenizer;
+pub mod functions;
+pub mod operators;
 pub mod parser;
+pub mod tokenizer;
 
-use self::binary_operators::*;
-use std::collections:: HashSet;
-
-use crate::shunting_yard::unary_operators::UOp;
-
-pub struct Ctx<'a> {
-    pub(self) bi_ops: HashSet<BiOp<'a>>,
-    pub(self) u_ops: HashSet<UOp<'a>>,
+pub struct Ctx {
+    pub bi_ops: HashSet<BiOp>,
+    pub u_ops: HashSet<UOp>,
+    pub fns: HashSet<Func>,
 }
 
-impl<'a> Ctx<'a> {
-    pub fn new(bi_ops: HashSet<BiOp<'a>>, u_ops: HashSet<UOp<'a>>) -> Self {
-       Self {bi_ops, u_ops}
+impl Ctx {
+    #[allow(dead_code)]
+    pub fn new(bi_ops: HashSet<BiOp>, u_ops: HashSet<UOp>, fns: HashSet<Func>) -> Self {
+        Self { bi_ops, u_ops, fns }
     }
 
-    pub fn default() -> Self {
-        Self { bi_ops: binary_operators::default_operators(), u_ops: unary_operators::default_operators() }
+    pub fn empty() -> Self {
+        Self {
+            bi_ops: HashSet::new(),
+            u_ops: HashSet::new(),
+            fns: HashSet::new(),
+        }
+    }
+}
+
+impl Default for Ctx {
+    fn default() -> Self {
+        Self {
+            bi_ops: binary::default_operators(),
+            u_ops: unary::default_operators(),
+            fns: functions::default_functions(),
+        }
     }
 }
