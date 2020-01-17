@@ -22,6 +22,7 @@ impl Ctx {
         Self { bi_ops, u_ops, fns }
     }
 
+    #[allow(dead_code)]
     pub fn empty() -> Self {
         Self {
             bi_ops: HashSet::new(),

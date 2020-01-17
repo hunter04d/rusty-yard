@@ -1,10 +1,12 @@
 #[derive(Debug)]
-pub enum Token {
+pub enum Token<'a> {
     OpenParen,
     ClosedParen,
     Comma,
-    Id(String),
+    Id(&'a str),
     Num(f64),
+    // Bad token might merge 2 tokens separated by whitespace, as such it has to allocate
+    // example: \x01<space>\x01 results in one bad token <BAD TOKEN>(\x01\x01)
     BadToken(String),
 }
 
@@ -13,7 +15,7 @@ pub fn get_token_text(token: &Token) -> String {
     match token {
         Token::OpenParen => String::from("("),
         Token::ClosedParen => String::from(")"),
-        Token::Id(s) => s.clone(),
+        Token::Id(s) => String::from(*s),
         Token::Num(n) => n.to_string(),
         Token::BadToken(s) => format!("<BAD TOKEN>({})", s),
         Token::Comma => String::from(","),
@@ -21,11 +23,10 @@ pub fn get_token_text(token: &Token) -> String {
 }
 
 use crate::shunting_yard::Ctx;
-use std::ops::AddAssign;
 
 type Match<T> = Option<(T, usize)>;
 
-pub fn tokenize(input: &str, ctx: &Ctx) -> Vec<Token> {
+pub fn tokenize<'a>(input: &'a str, ctx: &Ctx) -> Vec<Token<'a>> {
     if !input.is_ascii() {
         panic!()
     }
@@ -37,15 +38,15 @@ pub fn tokenize(input: &str, ctx: &Ctx) -> Vec<Token> {
             index += 1;
             continue;
         }
-        let mut consumed = 1usize;
+        let mut consumed: usize = 1;
         let next_token = match ch {
             '(' => Token::OpenParen,
             ')' => Token::ClosedParen,
             ',' => Token::Comma,
             _ => {
-                if let Some((bi_op, n)) = match_op(&input[index..], &ctx) {
+                if let Some((op, n)) = match_op(&input[index..], &ctx) {
                     consumed = n;
-                    Token::Id(bi_op)
+                    Token::Id(op)
                 } else if let Some((id, n)) = match_id(&input[index..]) {
                     consumed = n;
                     Token::Id(id)
@@ -59,11 +60,10 @@ pub fn tokenize(input: &str, ctx: &Ctx) -> Vec<Token> {
         };
         // merge the trailing <Bad Token>s into one
         let mut last_merged = false;
-        if !output.is_empty() {
-            let last_token = output.last_mut().unwrap();
+        if let Some(last_token) = output.last_mut() {
             if let (Token::BadToken(s1), Token::BadToken(s2)) = (last_token, &next_token) {
                 last_merged = true;
-                s1.add_assign(s2);
+                *s1 += s2;
             }
         }
         if !last_merged {
@@ -78,14 +78,14 @@ pub fn tokenize(input: &str, ctx: &Ctx) -> Vec<Token> {
     output
 }
 
-fn match_id(text: &str) -> Match<String> {
-    const EXTRA_CHARS: &str = "$@_{}[]:-.";
-    let is_extra = |ch: char| EXTRA_CHARS.chars().any(|v| v == ch);
+fn match_id(text: & str) -> Match<&str> {
+    let extra_chars = "$@_{}[]:-.";
+    let is_extra = |ch: char| extra_chars.chars().any(|v| v == ch);
     let is_valid_first_char = |ch: char| ch.is_ascii_alphabetic() || is_extra(ch);
     let is_valid_char = |ch: char| ch.is_ascii_alphanumeric() || is_extra(ch);
 
     let mut iterator = text.chars();
-    if let Some(ch) = iterator.next() {
+    if let Some(ch)  = iterator.next() {
         if is_valid_first_char(ch) {
             let mut index = 1usize;
             while let Some(ch) = iterator.next() {
@@ -95,27 +95,26 @@ fn match_id(text: &str) -> Match<String> {
                 }
                 break;
             }
-            return Some((text[..index].to_string(), index));
+            return Some((&text[..index], index));
         }
     }
     None
 }
 
-fn match_op(text: &str, ctx: &Ctx) -> Match<String> {
+fn match_op<'a>(text: &'a str, ctx: &Ctx) -> Match<&'a str> {
     let matched_bi_op = ctx
         .bi_ops
         .iter()
         .find(|op| text.starts_with(&op.token))
-        .map(|op| (op.token.to_string()));
+        .map(|op| op.token.len());
     let matched_u_op = || {
         ctx.u_ops
             .iter()
             .find(|op| text.starts_with(&op.token))
-            .map(|op| op.token.to_string())
+            .map(|op| op.token.len())
     };
-    matched_bi_op.or_else(matched_u_op).map(|s| {
-        let u = s.len();
-        (s, u)
+    matched_bi_op.or_else(matched_u_op).map(|index| {
+        (&text[..index], index)
     })
 }
 
@@ -172,11 +171,11 @@ mod tests {
     #[test]
     fn test_bad_token() {
         let ctx = &Ctx::empty();
-        let str = "^^^^^";
-        let res = tokenize(str, ctx);
+        let s = "\x01\x01";
+        let res = tokenize(s, ctx);
         assert_eq!(1, res.len());
         if let Token::BadToken(bad_token) = &res[0] {
-            assert_eq!(str, bad_token);
+            assert_eq!(s, *bad_token);
         } else {
             assert!(false, "Not <Bad Token>");
         }

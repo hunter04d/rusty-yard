@@ -10,7 +10,7 @@ use crate::shunting_yard::functions::Func;
 #[derive(Debug)]
 pub enum ParserToken<'a> {
     Num(f64),
-    Id(String),
+    Id(&'a str),
     UOp(&'a UOp),
     BiOp(&'a BiOp),
     Func(&'a Func, usize),
@@ -57,7 +57,7 @@ enum ParseState {
 #[derive(Debug)]
 pub struct Error;
 
-pub fn parse<'a>(tokens: &Vec<Token>, ctx: &'a Ctx) -> Result<VecDeque<ParserToken<'a>>, Error> {
+pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<VecDeque<ParserToken<'a>>, Error> {
     let mut queue = VecDeque::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = ExpectExpression;
@@ -69,7 +69,7 @@ pub fn parse<'a>(tokens: &Vec<Token>, ctx: &'a Ctx) -> Result<VecDeque<ParserTok
                 queue.push_back(ParserToken::Num(num));
                 parse_state = ExpectOperator;
             }
-            Token::Id(ref id) => {
+            Token::Id(id) => {
                 let next_stack_value: Option<OperatorStackValue> = find_uop(ctx, id, &parse_state)
                     .or_else(|| find_biop(ctx, id, &mut queue, &mut operator_stack))
                     .or_else(|| find_func(ctx, id, &parse_state));
@@ -155,12 +155,12 @@ fn pop_operator_stack<'a>(
 
 fn find_biop<'a, 'b>(
     ctx: &'a Ctx,
-    id: &String,
+    id: &str,
     queue: &mut VecDeque<ParserToken<'b>>,
     operator_stack: &mut Vec<OperatorStackValue<'b>>,
 ) -> Option<OperatorStackValue<'a>> {
     // binary operator
-    let b_op = ctx.bi_ops.iter().find(|&op| op.token == *id)?;
+    let b_op = ctx.bi_ops.iter().find(|op| op.token == id)?;
     while let Some(top_of_stack) = operator_stack.last() {
         match *top_of_stack {
             OperatorStackValue::UOp(op) => {

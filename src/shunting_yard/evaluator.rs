@@ -23,8 +23,8 @@ pub fn eval_with(
             ParserToken::Num(n) => {
                 eval_stack.push(n);
             }
-            ParserToken::Id(ref id) => {
-                let value = variables.get(id).ok_or_else(|| (report_not_found(id)))?;
+            ParserToken::Id( id) => {
+                let value = variables.get(id).ok_or_else(|| report_not_found(id))?;
                 eval_stack.push(*value);
             }
             ParserToken::UOp(op) => {
