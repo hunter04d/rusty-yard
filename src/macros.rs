@@ -1,5 +1,5 @@
-use super::Ctx;
 use super::tokenizer::Match;
+use super::Ctx;
 use std::collections::HashMap;
 
 pub trait Macro {

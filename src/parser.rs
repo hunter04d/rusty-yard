@@ -1,9 +1,9 @@
 use ParseState::{ExpectExpression, ExpectOperator};
 
-use super::{Ctx, tokenizer::Token};
 use super::functions::Func;
-use super::operators::{BiOp, UOp};
 use super::operators::binary::Associativity;
+use super::operators::{BiOp, UOp};
+use super::{tokenizer::Token, Ctx};
 
 #[derive(Debug, PartialEq)]
 pub enum ParserToken<'a> {
@@ -52,8 +52,38 @@ enum ParseState {
     ExpectOperator,
 }
 
-#[derive(Debug)]
-pub struct Error;
+use crate::tokenizer::get_token_text;
+use thiserror::Error;
+
+#[derive(Error, Debug)]
+#[error("Parser Error")]
+pub enum Error {
+    #[error("Expected left paren after function id")]
+    NoLeftParenAfterFnId,
+    #[error("Bad token {0:?}")]
+    BadToken(String),
+
+    #[error("Operator at the end of the token stream")]
+    OperatorAtTheEnd,
+
+    #[error("Mismatched left paren in the token stream")]
+    MismatchedLeftParen,
+
+    #[error("Mismatched right paren in the token stream")]
+    MismatchedRightParen,
+
+    #[error("Arity of function {id} mismatched: expected: {expected}, actual: {actual}")]
+    ArityMismatch {
+        id: String,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("Expected Operator, found expression")]
+    ExpectedOperator,
+
+    #[error("Comma can only be used in functions, arity stack is empty")]
+    CommaOutsideFn,
+}
 
 pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
     let mut queue = Vec::new();
@@ -63,7 +93,7 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToke
     let mut iter = tokens.iter().peekable();
     while let Some(current_token) = iter.next() {
         match *current_token {
-            Token::Num(num) if parse_state == ExpectExpression => {
+            Token::Num(num) => {
                 queue.push(ParserToken::Num(num));
                 parse_state = ExpectOperator;
             }
@@ -83,7 +113,7 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToke
                             if let Some(Token::OpenParen) = iter.peek() {
                                 arity.push(1usize);
                             } else {
-                                return Err(Error);
+                                return Err(Error::NoLeftParenAfterFnId);
                             }
                         }
                         parse_state = ExpectExpression;
@@ -92,6 +122,9 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToke
                 }
             }
             Token::OpenParen => {
+                if let ParseState::ExpectOperator = parse_state {
+                    return Err(Error::ExpectedOperator);
+                }
                 operator_stack.push(OperatorStackValue::LeftParen);
             }
             Token::ClosedParen => {
@@ -100,29 +133,40 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToke
             }
             Token::Comma => {
                 pop_operator_stack(&mut operator_stack, &mut queue, &mut arity, false)?;
-                // TODO: arity stack
                 parse_state = ExpectExpression;
-                let a = arity
-                    .last_mut()
-                    .expect("Comma can only be used in functions, arity should contain value");
+                let a = arity.last_mut().ok_or(Error::CommaOutsideFn)?;
                 *a += 1;
             }
-            _ => {
-                return Err(Error);
+            ref token => {
+                return Err(Error::BadToken(get_token_text(token)));
             }
         }
     }
     if parse_state == ExpectExpression {
-        return Err(Error);
+        return Err(Error::OperatorAtTheEnd);
     }
     while let Some(v) = operator_stack.pop() {
         if let OperatorStackValue::LeftParen = v {
-            return Err(Error);
-        } // TODO: function arity check
+            return Err(Error::MismatchedLeftParen);
+        }
         let token = to_parser_token(v, &mut arity).unwrap();
+        check_arity(&token)?;
         queue.push(token);
     }
     Ok(queue)
+}
+
+fn check_arity(token: &ParserToken) -> Result<(), Error> {
+    if let ParserToken::Func(func, n_args) = token {
+        if func.arity != 0 && func.arity != *n_args {
+            return Err(Error::ArityMismatch {
+                id: (&func.token).into(),
+                expected: func.arity,
+                actual: *n_args,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn pop_operator_stack<'a>(
@@ -139,15 +183,15 @@ fn pop_operator_stack<'a>(
         } else {
             // unwrap: safe because operator stack value is never LeftParen and is always present
             let el = operator_stack.pop().unwrap();
-            // TODO: function arity check
             let token = to_parser_token(el, arity).unwrap();
+            check_arity(&token)?;
             queue.push(token);
         }
     }
     return if found_left_paren || !expect_left_paren {
         Ok(())
     } else {
-        Err(Error)
+        Err(Error::MismatchedRightParen)
     };
 }
 
@@ -209,9 +253,9 @@ fn find_func<'a>(
 #[cfg(test)]
 mod tests {
 
+    use super::ParserToken::*;
     use super::*;
     use crate::operators;
-    use super::ParserToken::*;
 
     fn get_biop() -> operators::BiOp {
         operators::BiOp {
@@ -258,7 +302,10 @@ mod tests {
             vec![Id("a"), Id("b"), BiOp(&bi_op), Id("c"), BiOp(&bi_op)],
         ];
         for (expected, input) in expected.into_iter().zip(input) {
-            let actual = parse(&input, &ctx)?.into_iter().collect::<Vec<_>>();
+            let actual = parse(&input, &ctx)
+                .expect("Parse succeeded")
+                .into_iter()
+                .collect::<Vec<_>>();
             assert_eq!(expected, actual);
         }
         Ok(())

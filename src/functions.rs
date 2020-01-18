@@ -11,13 +11,12 @@ pub struct Func {
     pub arity: usize,
     pub func: fn(&[f64]) -> f64,
 }
-
 #[derive(Debug)]
 pub struct Error;
 
 impl Func {
     pub(super) fn call(&self, args: &[f64]) -> Result<f64, Error> {
-        if args.len() != self.arity {
+        if self.arity != 0 && args.len() != self.arity {
             Err(Error)
         } else {
             let func = self.func;
@@ -50,7 +49,6 @@ impl Debug for Func {
     }
 }
 
-
 pub fn to_args_1(func: fn(f64) -> f64) -> impl Fn(&[f64]) -> f64 {
     move |args| func(args[0])
 }
@@ -74,6 +72,12 @@ lazy_static! {
         arity: 0,
         func: |args| args.iter().sum(),
     };
+
+     pub static ref FN_PROD: Func = Func {
+        token: "prod".to_owned(),
+        arity: 0,
+        func: |args| args.iter().product(),
+    };
     pub static ref FN_SUB: Func = Func {
         token: "sub".to_owned(),
         arity: 2,
@@ -89,6 +93,7 @@ pub fn default_functions() -> HashSet<Func> {
     let mut s = HashSet::new();
     s.insert(FN_MAX.clone());
     s.insert(FN_SUM.clone());
+    s.insert(FN_PROD.clone());
     s.insert(FN_SUB.clone());
     s
 }

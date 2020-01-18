@@ -4,7 +4,11 @@ version = "0.1.0"
 authors = ["hunter04d <hunter04d@gmail.com>"]
 edition = "2018"
 
+[profile.release]
+lto = true
+
 [dependencies]
 proptest = "0.9"
 lazy_static = "1.4"
 regex = "1.3"
+thiserror = "1.0"

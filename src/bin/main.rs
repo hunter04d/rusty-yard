@@ -1,7 +1,6 @@
-use shunting_yard::evaluator;
-use std::io::{stdin, stdout, stderr, Write};
-use shunting_yard::evaluator::Error;
+use std::io::{stdin, stdout, Write};
 
+use shunting_yard::evaluator;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     loop {
@@ -11,7 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         stdin().read_line(&mut input)?;
         match evaluator::eval_str(&input) {
             Ok(res) => println!("{}", res),
-            Err(e) => eprintln!("Error: {:?}", e),
+            Err(e) => eprintln!("Error: {}", e),
         }
     }
 }
