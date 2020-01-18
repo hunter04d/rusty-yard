@@ -6,6 +6,5 @@ edition = "2018"
 
 [dependencies]
 proptest = "0.9"
-float-cmp = "0.6"
 lazy_static = "1.4"
-
+regex = "1.3"

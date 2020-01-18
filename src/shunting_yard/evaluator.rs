@@ -1,4 +1,7 @@
 use super::parser::ParserToken;
+use crate::shunting_yard::parser::parse;
+use crate::shunting_yard::tokenizer::tokenize;
+use crate::shunting_yard::Ctx;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -14,7 +17,7 @@ fn report_not_found(v: &str) -> Error {
 
 fn eval_internal(
     tokens: &Vec<ParserToken>,
-    variables: &HashMap<String, f64>,
+    variables: &mut HashMap<String, f64>,
 ) -> Result<f64, Error> {
     let mut eval_stack: Vec<f64> = Vec::new();
     let mut iter = tokens.iter();
@@ -60,18 +63,38 @@ fn eval_internal(
         .ok_or(Error("ill formed token stream".to_owned()))
 }
 
+#[allow(dead_code)]
 pub fn eval_with_vars(
     tokens: &Vec<ParserToken>,
-    variables: &HashMap<String, f64>,
+    variables: &mut HashMap<String, f64>,
 ) -> Result<f64, Error> {
     eval_internal(tokens, variables)
+}
+
+#[allow(dead_code)]
+pub fn eval_str(input: &str) -> Result<f64, Error> {
+    eval_str_with_vars_and_ctx(input, &mut HashMap::new(), &Ctx::default())
+}
+#[allow(dead_code)]
+pub fn eval_str_with_vars(input: &str, variables: &mut HashMap<String, f64>) -> Result<f64, Error> {
+    eval_str_with_vars_and_ctx(input, variables, &Ctx::default())
+}
+#[allow(dead_code)]
+pub fn eval_str_with_vars_and_ctx(
+    input: &str,
+    variables: &mut HashMap<String, f64>,
+    ctx: &Ctx,
+) -> Result<f64, Error> {
+    let tokens = tokenize(input, ctx);
+    let parsed = parse(&tokens, ctx).map_err(|_| Error("Parser error".into()))?;
+    eval_internal(&parsed, variables)
 }
 
 #[cfg(test)]
 mod tests {
     use super::ParserToken::*;
     use super::*;
-    use crate::shunting_yard::operators::binary::{PLUS};
+    use crate::shunting_yard::operators::binary::PLUS;
 
     // TODO: more test cases
     #[test]
@@ -84,11 +107,14 @@ mod tests {
 
         let expected = vec![1.0, 10.0, 15.0];
 
-        let input = vec![vec![Num(1.0)], vec![Id("a")],
-        vec![Id("a"), Num(5.0), BiOp(&PLUS)]];
+        let input = vec![
+            vec![Num(1.0)],
+            vec![Id("a")],
+            vec![Id("a"), Num(5.0), BiOp(&PLUS)],
+        ];
 
         for (expected, input) in expected.into_iter().zip(input) {
-            let result = eval_with_vars(&input, &vars)?;
+            let result = eval_with_vars(&input, &mut vars)?;
             assert_eq!(expected, result);
         }
         Ok(())

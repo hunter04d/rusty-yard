@@ -1,16 +1,12 @@
 mod shunting_yard;
 
-use shunting_yard::{evaluator, parser::parse, tokenizer::tokenize, Ctx};
-use std::collections::HashMap;
+use shunting_yard::{evaluator, Ctx};
 
 fn main() {
     let ctx = Ctx::default();
-    let output = tokenize("max(1 + 1, 2)");
-    println!("{:?}", output);
-    let output = parse(&output, &ctx).unwrap();
-    println!("{:?}", output);
-    let mut vars = HashMap::new();
-    vars.insert("bla".to_string(), 1.0);
-    let output = evaluator::eval_with_vars(&output, &vars).unwrap();
-    println!("res = {}", output);
+    let res = evaluator::eval_str("max(1, 2)");
+    match res {
+        Ok(res) => println!("res = {}", res),
+        Err(e) => println!("error: {:?}", e),
+    }
 }

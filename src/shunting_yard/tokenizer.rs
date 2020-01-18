@@ -1,3 +1,5 @@
+use super::Ctx;
+
 #[derive(Debug, PartialEq)]
 pub enum Token<'a> {
     OpenParen,
@@ -23,9 +25,10 @@ pub fn get_token_text(token: &Token) -> String {
     }
 }
 
-type Match<T> = Option<(T, usize)>;
+// number of chars matches
+pub type Match = Option<usize>;
 
-pub fn tokenize(input: &str) -> Vec<Token> {
+pub fn tokenize<'a>(input: &'a str, ctx: &Ctx) -> Vec<Token<'a>> {
     if !input.is_ascii() {
         panic!("Input contains non ascii characters");
     }
@@ -43,12 +46,17 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             ')' => Token::ClosedParen,
             ',' => Token::Comma,
             _ => {
-                if let Some((num, n)) = match_number(&input[index..]) {
+                let text = &input[index..];
+                if let Some(n) = match_number(text) {
                     consumed = n;
-                    Token::Num(num)
-                } else if let Some((id, n)) = match_id(&input[index..]) {
+                    Token::Num(
+                        text[..n]
+                            .parse()
+                            .expect("Parsing a matched number should not fail"),
+                    )
+                } else if let Some(n) = match_op(text, ctx).or_else(|| match_id(text)) {
                     consumed = n;
-                    Token::Id(id)
+                    Token::Id(&text[..n])
                 } else {
                     Token::BadToken(ch.to_string())
                 }
@@ -74,7 +82,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
     output
 }
 
-fn match_id(text: &str) -> Match<&str> {
+pub fn match_id(text: &str) -> Match {
     const DISALLOWED_CHARS: &str = "(),";
     let is_disallowed = |ch: char| DISALLOWED_CHARS.chars().any(|v| v == ch);
     let is_valid_first_char =
@@ -92,13 +100,28 @@ fn match_id(text: &str) -> Match<&str> {
                 }
                 break;
             }
-            return Some((&text[..index], index));
+            return Some(index);
         }
     }
     None
 }
 
-fn match_number(text: &str) -> Match<f64> {
+fn match_op(text: &str, ctx: &Ctx) -> Match {
+    let matched_bi_op = ctx
+        .bi_ops
+        .iter()
+        .find(|op| text.starts_with(&op.token))
+        .map(|op| op.token.len());
+    let matched_u_op = || {
+        ctx.u_ops
+            .iter()
+            .find(|op| text.starts_with(&op.token))
+            .map(|op| op.token.len())
+    };
+    matched_bi_op.or_else(matched_u_op).map(|s| s)
+}
+
+pub fn match_number(text: &str) -> Match {
     let mut iterator = text.chars();
     if let Some(ch) = iterator.next() {
         if ch.is_ascii_digit() {
@@ -119,18 +142,25 @@ fn match_number(text: &str) -> Match<f64> {
                 }
                 break;
             }
-            let num_res = text[..index].parse();
-            return num_res.ok().map(|num| (num, index));
+            return Some(index);
         }
     }
     None
+}
+
+#[allow(dead_code)]
+pub fn match_str(text: &str, str_to_match: &str) -> Match {
+    if text.starts_with(str_to_match) {
+        Some(str_to_match.len())
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::Token::*;
     use super::*;
-    use float_cmp::approx_eq;
     use proptest::prelude::*;
     proptest! {
         #[test]
@@ -139,16 +169,14 @@ mod tests {
             let res = match_number(&str);
             prop_assert!(res.is_some());
             let res = res.unwrap();
-            prop_assert!(approx_eq!(f64, f, res.0));
-            prop_assert_eq!(str.len(), res.1);
+            prop_assert_eq!(str.len(), res);
         }
         #[test]
         fn test_match_ids(s in r#"[a-zA-z](?:[a-zA-Z]|[0-9])*"#) {
             let res = match_id(&s);
             prop_assert!(res.is_some());
             let res = res.unwrap();
-            prop_assert_eq!(&s, res.0);
-            prop_assert_eq!(s.len(), res.1);
+            prop_assert_eq!(s.len(), res);
         }
     }
 
@@ -162,7 +190,7 @@ mod tests {
         ];
         let input = vec!["1.0 op 1.0", "- 1.0", "pi()"];
         for (expected, input) in expected.into_iter().zip(input) {
-            let output = tokenize(input);
+            let output = tokenize(input, &Ctx::empty());
             assert_eq!(expected, output);
         }
     }
@@ -177,7 +205,8 @@ mod tests {
     #[test]
     fn test_bad_token_merging() {
         let s = "\x01\x01";
-        let res = tokenize(s);
+        let ctx = Ctx::empty();
+        let res = tokenize(s, &ctx);
         assert_eq!(1, res.len());
         if let Token::BadToken(bad_token) = &res[0] {
             assert_eq!(s, *bad_token);
