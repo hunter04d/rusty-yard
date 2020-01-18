@@ -1,5 +1,3 @@
-use std::collections::VecDeque;
-
 use ParseState::{ExpectExpression, ExpectOperator};
 
 use super::operators::binary::Associativity;
@@ -7,7 +5,7 @@ use super::operators::{BiOp, UOp};
 use super::{tokenizer::Token, Ctx};
 use crate::shunting_yard::functions::Func;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ParserToken<'a> {
     Num(f64),
     Id(&'a str),
@@ -57,8 +55,8 @@ enum ParseState {
 #[derive(Debug)]
 pub struct Error;
 
-pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<VecDeque<ParserToken<'a>>, Error> {
-    let mut queue = VecDeque::new();
+pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
+    let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = ExpectExpression;
     let mut arity = Vec::new();
@@ -66,7 +64,7 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<VecDeque<Parse
     while let Some(current_token) = iter.next() {
         match *current_token {
             Token::Num(num) if parse_state == ExpectExpression => {
-                queue.push_back(ParserToken::Num(num));
+                queue.push(ParserToken::Num(num));
                 parse_state = ExpectOperator;
             }
             Token::Id(id) => {
@@ -77,7 +75,7 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<VecDeque<Parse
                     // is variable
                     None => {
                         parse_state = ExpectOperator;
-                        queue.push_back(ParserToken::Id(id.clone()));
+                        queue.push(ParserToken::Id(id.clone()));
                     }
                     // is operator
                     Some(sv) => {
@@ -122,14 +120,14 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<VecDeque<Parse
             return Err(Error);
         } // TODO: function arity check
         let token = to_parser_token(v, &mut arity).unwrap();
-        queue.push_back(token);
+        queue.push(token);
     }
     Ok(queue)
 }
 
 fn pop_operator_stack<'a>(
     operator_stack: &mut Vec<OperatorStackValue<'a>>,
-    queue: &mut VecDeque<ParserToken<'a>>,
+    queue: &mut Vec<ParserToken<'a>>,
     arity: &mut Vec<usize>,
     expect_left_paren: bool,
 ) -> Result<(), Error> {
@@ -143,7 +141,7 @@ fn pop_operator_stack<'a>(
             let el = operator_stack.pop().unwrap();
             // TODO: function arity check
             let token = to_parser_token(el, arity).unwrap();
-            queue.push_back(token);
+            queue.push(token);
         }
     }
     return if found_left_paren || !expect_left_paren {
@@ -156,7 +154,7 @@ fn pop_operator_stack<'a>(
 fn find_biop<'a, 'b>(
     ctx: &'a Ctx,
     id: &str,
-    queue: &mut VecDeque<ParserToken<'b>>,
+    queue: &mut Vec<ParserToken<'b>>,
     operator_stack: &mut Vec<OperatorStackValue<'b>>,
 ) -> Option<OperatorStackValue<'a>> {
     // binary operator
@@ -164,7 +162,7 @@ fn find_biop<'a, 'b>(
     while let Some(top_of_stack) = operator_stack.last() {
         match *top_of_stack {
             OperatorStackValue::UOp(op) => {
-                queue.push_back(ParserToken::UOp(op));
+                queue.push(ParserToken::UOp(op));
                 operator_stack.pop();
             }
             OperatorStackValue::BiOp(op)
@@ -173,7 +171,7 @@ fn find_biop<'a, 'b>(
                         && op.associativity == Associativity::LEFT) =>
             {
                 let pt = op.into();
-                queue.push_back(pt);
+                queue.push(pt);
                 operator_stack.pop();
             }
             _ => {
@@ -210,5 +208,57 @@ fn find_func<'a>(
 
 #[cfg(test)]
 mod tests {
+    use super::ParserToken::*;
     use super::*;
+    use crate::shunting_yard::operators;
+    fn get_biop() -> operators::BiOp {
+        operators::BiOp {
+            token: "bi_op".to_owned(),
+            precedence: 0,
+            associativity: Associativity::LEFT,
+            func: |_1, _2| 0.0,
+        }
+    }
+
+    fn get_uop() -> operators::UOp {
+        operators::UOp {
+            token: "u_op".to_owned(),
+            func: |_arg| 0.0,
+        }
+    }
+    fn get_ctx() -> Ctx {
+        let mut ctx = Ctx::empty();
+        ctx.bi_ops.insert(get_biop());
+        ctx.u_ops.insert(get_uop());
+        ctx
+    }
+
+    // TODO: more test cases
+    #[test]
+    fn test_parse() -> Result<(), Error> {
+        let bi_op = get_biop();
+        let u_op = get_uop();
+        let ctx = get_ctx();
+        let input = vec![
+            vec![Token::Num(10.0), Token::Id("bi_op"), Token::Id("10")],
+            vec![Token::Id("u_op"), Token::Num(10.0)],
+            vec![
+                Token::Id("a"),
+                Token::Id("bi_op"),
+                Token::Id("b"),
+                Token::Id("bi_op"),
+                Token::Id("c"),
+            ],
+        ];
+        let expected: Vec<_> = vec![
+            vec![Num(10.0), Id("10"), BiOp(&bi_op)],
+            vec![Num(10.0), UOp(&u_op)],
+            vec![Id("a"), Id("b"), BiOp(&bi_op), Id("c"), BiOp(&bi_op)],
+        ];
+        for (expected, input) in expected.into_iter().zip(input) {
+            let actual = parse(&input, &ctx)?.into_iter().collect::<Vec<_>>();
+            assert_eq!(expected, actual);
+        }
+        Ok(())
+    }
 }

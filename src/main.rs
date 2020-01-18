@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 fn main() {
     let ctx = Ctx::default();
-    let output = tokenize("max(1, 2)", &ctx);
+    let output = tokenize("max(1 + 1, 2)");
     println!("{:?}", output);
     let output = parse(&output, &ctx).unwrap();
     println!("{:?}", output);
