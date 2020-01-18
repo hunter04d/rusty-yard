@@ -1,7 +1,4 @@
-use super::parser::ParserToken;
-use crate::shunting_yard::parser::parse;
-use crate::shunting_yard::tokenizer::tokenize;
-use crate::shunting_yard::Ctx;
+use super::{Ctx, tokenizer::tokenize, parser::{parse, ParserToken}};
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -47,10 +44,9 @@ fn eval_internal(
                 if arity != 0 && arity != call_args {
                     return Err(Error("function arity and call_args differ".to_owned()));
                 }
-                let func = func.func;
                 // TODO: variable length functions
                 let temp = &eval_stack[eval_stack.len() - call_args..];
-                let eval = func(temp);
+                let eval = func.call(temp).unwrap();
                 for _ in 0..call_args {
                     eval_stack.pop();
                 }
@@ -63,7 +59,6 @@ fn eval_internal(
         .ok_or(Error("ill formed token stream".to_owned()))
 }
 
-#[allow(dead_code)]
 pub fn eval_with_vars(
     tokens: &Vec<ParserToken>,
     variables: &mut HashMap<String, f64>,
@@ -71,15 +66,15 @@ pub fn eval_with_vars(
     eval_internal(tokens, variables)
 }
 
-#[allow(dead_code)]
+
 pub fn eval_str(input: &str) -> Result<f64, Error> {
     eval_str_with_vars_and_ctx(input, &mut HashMap::new(), &Ctx::default())
 }
-#[allow(dead_code)]
+
 pub fn eval_str_with_vars(input: &str, variables: &mut HashMap<String, f64>) -> Result<f64, Error> {
     eval_str_with_vars_and_ctx(input, variables, &Ctx::default())
 }
-#[allow(dead_code)]
+
 pub fn eval_str_with_vars_and_ctx(
     input: &str,
     variables: &mut HashMap<String, f64>,
@@ -94,7 +89,7 @@ pub fn eval_str_with_vars_and_ctx(
 mod tests {
     use super::ParserToken::*;
     use super::*;
-    use crate::shunting_yard::operators::binary::PLUS;
+    use crate::operators::binary::PLUS;
 
     // TODO: more test cases
     #[test]

@@ -20,7 +20,6 @@ pub struct Ctx {
 }
 
 impl Ctx {
-    #[allow(dead_code)]
     pub fn new(bi_ops: HashSet<BiOp>, u_ops: HashSet<UOp>, fns: HashSet<Func>) -> Self {
         Self {
             bi_ops,
@@ -30,7 +29,6 @@ impl Ctx {
         }
     }
 
-    #[allow(dead_code)]
     pub fn empty() -> Self {
         Self {
             bi_ops: HashSet::new(),

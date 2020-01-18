@@ -1,5 +1,5 @@
 use super::Ctx;
-use crate::shunting_yard::tokenizer::Match;
+use super::tokenizer::Match;
 use std::collections::HashMap;
 
 pub trait Macro {

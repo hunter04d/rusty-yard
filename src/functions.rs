@@ -12,11 +12,11 @@ pub struct Func {
     pub func: fn(&[f64]) -> f64,
 }
 
-struct Error;
+#[derive(Debug)]
+pub struct Error;
 
 impl Func {
-    #[allow(dead_code)]
-    fn call(&self, args: &[f64]) -> Result<f64, Error> {
+    pub(super) fn call(&self, args: &[f64]) -> Result<f64, Error> {
         if args.len() != self.arity {
             Err(Error)
         } else {
@@ -50,13 +50,12 @@ impl Debug for Func {
     }
 }
 
-#[allow(dead_code)]
-fn to_args_1(func: fn(f64) -> f64) -> impl Fn(&[f64]) -> f64 {
+
+pub fn to_args_1(func: fn(f64) -> f64) -> impl Fn(&[f64]) -> f64 {
     move |args| func(args[0])
 }
 
-#[allow(dead_code)]
-fn to_args_2(func: fn(f64, f64) -> f64) -> impl Fn(&[f64]) -> f64 {
+pub fn to_args_2(func: fn(f64, f64) -> f64) -> impl Fn(&[f64]) -> f64 {
     move |args| func(args[0], args[1])
 }
 

@@ -13,7 +13,6 @@ pub enum Token<'a> {
     BadToken(String),
 }
 
-#[allow(dead_code)]
 pub fn get_token_text(token: &Token) -> String {
     match token {
         Token::OpenParen => String::from("("),
@@ -148,7 +147,6 @@ pub fn match_number(text: &str) -> Match {
     None
 }
 
-#[allow(dead_code)]
 pub fn match_str(text: &str, str_to_match: &str) -> Match {
     if text.starts_with(str_to_match) {
         Some(str_to_match.len())

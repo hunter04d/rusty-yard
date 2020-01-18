@@ -1,9 +1,9 @@
 use ParseState::{ExpectExpression, ExpectOperator};
 
-use super::operators::binary::Associativity;
+use super::{Ctx, tokenizer::Token};
+use super::functions::Func;
 use super::operators::{BiOp, UOp};
-use super::{tokenizer::Token, Ctx};
-use crate::shunting_yard::functions::Func;
+use super::operators::binary::Associativity;
 
 #[derive(Debug, PartialEq)]
 pub enum ParserToken<'a> {
@@ -208,9 +208,11 @@ fn find_func<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::ParserToken::*;
+
     use super::*;
-    use crate::shunting_yard::operators;
+    use crate::operators;
+    use super::ParserToken::*;
+
     fn get_biop() -> operators::BiOp {
         operators::BiOp {
             token: "bi_op".to_owned(),
