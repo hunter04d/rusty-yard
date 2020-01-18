@@ -1,30 +1,20 @@
-use ParseState::{ExpectExpression, ExpectOperator};
+use std::fmt::Debug;
+
+pub use error::Error;
+pub use token::ParserToken;
+use ParseState::*;
 
 use super::functions::Func;
+use super::macros::{ApplyMode, ParsedMacro};
 use super::operators::binary::Associativity;
 use super::operators::{BiOp, UOp};
-use super::{tokenizer::Token, Ctx};
+use super::{
+    tokenizer::{get_token_text, Token},
+    Ctx,
+};
 
-#[derive(Debug, PartialEq)]
-pub enum ParserToken<'a> {
-    Num(f64),
-    Id(&'a str),
-    UOp(&'a UOp),
-    BiOp(&'a BiOp),
-    Func(&'a Func, usize),
-}
-
-impl<'a> From<&'a BiOp> for ParserToken<'a> {
-    fn from(op: &'a BiOp) -> Self {
-        ParserToken::BiOp(op)
-    }
-}
-
-impl<'a> From<&'a UOp> for ParserToken<'a> {
-    fn from(op: &'a UOp) -> Self {
-        ParserToken::UOp(&op)
-    }
-}
+mod error;
+mod token;
 
 #[derive(Debug)]
 enum OperatorStackValue<'a> {
@@ -32,6 +22,7 @@ enum OperatorStackValue<'a> {
     BiOp(&'a BiOp),
     UOp(&'a UOp),
     Func(&'a Func),
+    Macro(Box<dyn ParsedMacro + 'a>),
 }
 
 fn to_parser_token<'a>(
@@ -43,49 +34,17 @@ fn to_parser_token<'a>(
         OperatorStackValue::BiOp(b) => Ok(ParserToken::BiOp(b)),
         OperatorStackValue::UOp(u) => Ok(ParserToken::UOp(u)),
         OperatorStackValue::Func(f) => Ok(ParserToken::Func(f, arity.pop().unwrap())),
+        OperatorStackValue::Macro(m) => Ok(ParserToken::Macro(m)),
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
-enum ParseState {
+#[derive(Debug, Eq, PartialEq, Clone, Copy)]
+pub enum ParseState {
     ExpectExpression,
     ExpectOperator,
 }
 
-use crate::tokenizer::get_token_text;
-use thiserror::Error;
-
-#[derive(Error, Debug)]
-#[error("Parser Error")]
-pub enum Error {
-    #[error("Expected left paren after function id")]
-    NoLeftParenAfterFnId,
-    #[error("Bad token {0:?}")]
-    BadToken(String),
-
-    #[error("Operator at the end of the token stream")]
-    OperatorAtTheEnd,
-
-    #[error("Mismatched left paren in the token stream")]
-    MismatchedLeftParen,
-
-    #[error("Mismatched right paren in the token stream")]
-    MismatchedRightParen,
-
-    #[error("Arity of function {id} mismatched: expected: {expected}, actual: {actual}")]
-    ArityMismatch {
-        id: String,
-        expected: usize,
-        actual: usize,
-    },
-    #[error("Expected Operator, found expression")]
-    ExpectedOperator,
-
-    #[error("Comma can only be used in functions, arity stack is empty")]
-    CommaOutsideFn,
-}
-
-pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
+pub fn parse<'a>(tokens: &'a Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
     let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = ExpectExpression;
@@ -136,6 +95,16 @@ pub fn parse<'a>(tokens: &Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToke
                 parse_state = ExpectExpression;
                 let a = arity.last_mut().ok_or(Error::CommaOutsideFn)?;
                 *a += 1;
+            }
+            Token::Macro { defn, text } => {
+                let parse_result = defn.parse(text, parse_state)?;
+                parse_state = parse_result.state_after;
+                match parse_result.mode {
+                    ApplyMode::Before => queue.push(ParserToken::Macro(parse_result.result)),
+                    ApplyMode::After => {
+                        operator_stack.push(OperatorStackValue::Macro(parse_result.result))
+                    }
+                };
             }
             ref token => {
                 return Err(Error::BadToken(get_token_text(token)));
@@ -252,10 +221,10 @@ fn find_func<'a>(
 
 #[cfg(test)]
 mod tests {
+    use crate::operators;
 
     use super::ParserToken::*;
     use super::*;
-    use crate::operators;
 
     fn get_biop() -> operators::BiOp {
         operators::BiOp {
@@ -279,7 +248,7 @@ mod tests {
         ctx
     }
 
-    // TODO: more test cases
+    // TODO: more tests cases
     #[test]
     fn test_parse() -> Result<(), Error> {
         let bi_op = get_biop();

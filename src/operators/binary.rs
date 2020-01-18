@@ -1,6 +1,7 @@
-use lazy_static::lazy_static;
 use std::collections::HashSet;
 use std::fmt::{self, Debug, Formatter};
+
+use lazy_static::lazy_static;
 
 #[derive(Clone, Eq, PartialEq, Hash)]
 pub struct BiOp {

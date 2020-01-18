@@ -1,11 +1,12 @@
+use std::collections::HashMap;
+
+use thiserror::Error;
+
 use super::{
-    parser::{parse, ParserToken},
+    parser::{self, parse, ParserToken},
     tokenizer::tokenize,
     Ctx,
 };
-use crate::parser;
-use std::collections::HashMap;
-use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Error {
@@ -26,9 +27,13 @@ pub enum Error {
     #[error("Ill formed token steam")]
     Other,
 }
-type Result = std::result::Result<f64, Error>;
+pub type Result = std::result::Result<f64, Error>;
 
-fn eval_internal(tokens: &Vec<ParserToken>, variables: &mut HashMap<String, f64>) -> Result {
+fn eval_internal(
+    tokens: &Vec<ParserToken>,
+    variables: &mut HashMap<String, f64>,
+    ctx: &Ctx,
+) -> Result {
     let mut eval_stack: Vec<f64> = Vec::new();
     let mut iter = tokens.iter();
     while let Some(token) = iter.next() {
@@ -64,11 +69,16 @@ fn eval_internal(tokens: &Vec<ParserToken>, variables: &mut HashMap<String, f64>
                     });
                 }
                 let temp = &eval_stack[(eval_stack.len() - call_args)..];
-                let eval = func.call(temp).expect("Number of actual arguments matches the number of params to the function");
+                let eval = func.call(temp).expect(
+                    "Number of actual arguments matches the number of params to the function",
+                );
                 for _ in 0..call_args {
                     eval_stack.pop();
                 }
                 eval_stack.push(eval);
+            }
+            ParserToken::Macro(ref m) => {
+                m.eval(&mut eval_stack, variables, ctx)?;
             }
         }
     }
@@ -76,7 +86,7 @@ fn eval_internal(tokens: &Vec<ParserToken>, variables: &mut HashMap<String, f64>
 }
 
 pub fn eval_with_vars(tokens: &Vec<ParserToken>, variables: &mut HashMap<String, f64>) -> Result {
-    eval_internal(tokens, variables)
+    eval_internal(tokens, variables, &Ctx::default())
 }
 
 pub fn eval_str(input: &str) -> Result {
@@ -94,16 +104,18 @@ pub fn eval_str_with_vars_and_ctx(
 ) -> Result {
     let tokens = tokenize(input, ctx);
     let parsed = parse(&tokens, ctx)?;
-    eval_internal(&parsed, variables)
+    eval_internal(&parsed, variables, ctx)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::functions::FN_SUM;
+    use crate::operators::binary::PLUS;
+
     use super::ParserToken::*;
     use super::*;
-    use crate::operators::binary::PLUS;
-    use crate::functions::FN_SUM;
-    // TODO: more test cases
+
+    // TODO: more tests cases
     #[test]
     fn test_eval() -> std::result::Result<(), Error> {
         let mut vars = HashMap::new();
@@ -118,7 +130,7 @@ mod tests {
             vec![Num(1.0)],
             vec![Id("a")],
             vec![Id("a"), Num(5.0), BiOp(&PLUS)],
-            vec![Num(1.0), Num(1.0), Num(1.0), Func(&FN_SUM, 3)]
+            vec![Num(1.0), Num(1.0), Num(1.0), Func(&FN_SUM, 3)],
         ];
 
         for (expected, input) in expected.into_iter().zip(input) {

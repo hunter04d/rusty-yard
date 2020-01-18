@@ -1,17 +1,10 @@
+pub use token::Token;
+
+use crate::macros::Macro;
+
 use super::Ctx;
 
-#[derive(Debug, PartialEq)]
-pub enum Token<'a> {
-    OpenParen,
-    ClosedParen,
-    Comma,
-    Id(&'a str),
-    Num(f64),
-    // TODO: is this reasonable behaviour?
-    // Bad token might merge 2 tokens separated by whitespace, as such it has to allocate
-    // example: \x01<space>\x01 results in one bad token <BAD TOKEN>(\x01\x01)
-    BadToken(String),
-}
+mod token;
 
 pub fn get_token_text(token: &Token) -> String {
     match token {
@@ -21,13 +14,14 @@ pub fn get_token_text(token: &Token) -> String {
         Token::Num(n) => n.to_string(),
         Token::BadToken(s) => format!("<BAD TOKEN>({})", s),
         Token::Comma => String::from(","),
+        Token::Macro { defn, text } => format!("<MACRO {:?}>({})", defn, text),
     }
 }
 
 // number of chars matches
 pub type Match = Option<usize>;
 
-pub fn tokenize<'a>(input: &'a str, ctx: &Ctx) -> Vec<Token<'a>> {
+pub fn tokenize<'a>(input: &'a str, ctx: &'a Ctx) -> Vec<Token<'a>> {
     if !input.is_ascii() {
         panic!("Input contains non ascii characters");
     }
@@ -46,7 +40,13 @@ pub fn tokenize<'a>(input: &'a str, ctx: &Ctx) -> Vec<Token<'a>> {
             ',' => Token::Comma,
             _ => {
                 let text = &input[index..];
-                if let Some(n) = match_number(text) {
+                if let Some((m, n)) = match_macro(text, ctx) {
+                    consumed = n;
+                    Token::Macro {
+                        defn: m,
+                        text: &text[..n],
+                    }
+                } else if let Some(n) = match_number(text) {
                     consumed = n;
                     Token::Num(
                         text[..n]
@@ -105,6 +105,12 @@ pub fn match_id(text: &str) -> Match {
     None
 }
 
+pub fn match_macro<'a>(text: &str, ctx: &'a Ctx) -> Option<(&'a dyn Macro, usize)> {
+    ctx.macros
+        .iter()
+        .find_map(|m| m.match_input(text).map(|len| (m.as_ref(), len)))
+}
+
 fn match_op(text: &str, ctx: &Ctx) -> Match {
     let matched_bi_op = ctx
         .bi_ops
@@ -155,11 +161,19 @@ pub fn match_str(text: &str, str_to_match: &str) -> Match {
     }
 }
 
+pub fn skip_whitespace(text: &str) -> usize {
+    text.chars()
+        .take_while(|ch| ch.is_ascii_whitespace())
+        .count()
+}
+
 #[cfg(test)]
 mod tests {
+    use proptest::prelude::*;
+
     use super::Token::*;
     use super::*;
-    use proptest::prelude::*;
+
     proptest! {
         #[test]
         fn test_match_numbers(f in prop::num::f64::NORMAL) {
@@ -178,9 +192,10 @@ mod tests {
         }
     }
 
-    // TODO: more test cases
+    // TODO: more tests cases
     #[test]
     fn test_tokenize() {
+        let ctx = Ctx::empty();
         let expected = vec![
             vec![Num(1.0), Id("op"), Num(1.0)],
             vec![Id("-"), Num(1.0)],
@@ -188,7 +203,7 @@ mod tests {
         ];
         let input = vec!["1.0 op 1.0", "- 1.0", "pi()"];
         for (expected, input) in expected.into_iter().zip(input) {
-            let output = tokenize(input, &Ctx::empty());
+            let output = tokenize(input, &ctx);
             assert_eq!(expected, output);
         }
     }

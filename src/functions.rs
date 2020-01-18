@@ -72,8 +72,7 @@ lazy_static! {
         arity: 0,
         func: |args| args.iter().sum(),
     };
-
-     pub static ref FN_PROD: Func = Func {
+    pub static ref FN_PROD: Func = Func {
         token: "prod".to_owned(),
         arity: 0,
         func: |args| args.iter().product(),

@@ -5,6 +5,8 @@ use macros::Macro;
 use operators::{binary, unary};
 use operators::{BiOp, UOp};
 
+use crate::macros::default::Assign;
+
 pub mod evaluator;
 pub mod functions;
 pub mod macros;
@@ -35,6 +37,13 @@ impl Ctx {
             u_ops: HashSet::new(),
             fns: HashSet::new(),
             macros: Vec::new(),
+        }
+    }
+
+    pub fn default_with_macros() -> Self {
+        Self {
+            macros: vec![Box::new(Assign)],
+            ..Default::default()
         }
     }
 }

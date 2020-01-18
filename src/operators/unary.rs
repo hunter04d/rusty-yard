@@ -2,6 +2,7 @@ use std::collections::HashSet;
 use std::fmt::{self, Debug, Formatter};
 
 use lazy_static::lazy_static;
+
 #[derive(Clone, Hash, Eq, PartialEq)]
 pub struct UOp {
     pub token: String,
