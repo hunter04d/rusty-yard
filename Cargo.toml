@@ -1,5 +1,5 @@
 [package]
-name = "shunting_yard"
+name = "rusty_yard"
 version = "0.2.0"
 authors = ["hunter04d <hunter04d@gmail.com>"]
 edition = "2018"

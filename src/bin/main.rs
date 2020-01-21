@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::io::{stdin, stdout, Write};
 
-use shunting_yard::{evaluator, Ctx};
+use rusty_yard::{evaluator, Ctx};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vars = HashMap::new();

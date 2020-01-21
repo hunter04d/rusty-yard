@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
-use shunting_yard::evaluator;
-use shunting_yard::evaluator::eval_str_with_vars_and_ctx;
-use shunting_yard::Ctx;
+use rusty_yard::evaluator;
+use rusty_yard::evaluator::eval_str_with_vars_and_ctx;
+use rusty_yard::Ctx;
 
 #[test]
 fn test_macro_assign() -> Result<(), evaluator::Error> {

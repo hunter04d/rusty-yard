@@ -23,10 +23,9 @@ pub enum Error {
         expected: usize,
         actual: usize,
     },
-    
+
     #[error("Expected Operator, found expression")]
     ExpectedOperator,
-
     #[error("Expected expression, found operator")]
     ExpectedExpression,
 

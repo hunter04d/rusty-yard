@@ -308,7 +308,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "shunting_yard"
+name = "rusty_yard"
 version = "0.2.0"
 dependencies = [
  "lazy_static 1.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
