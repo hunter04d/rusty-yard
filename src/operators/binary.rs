@@ -38,19 +38,19 @@ lazy_static! {
     };
     pub static ref MULTIPLY: BiOp = BiOp {
         token: "*".to_owned(),
-        precedence: 0,
+        precedence: 1,
         associativity: Associativity::LEFT,
         func: |e1, e2| e1 * e2,
     };
     pub static ref DIVIDE: BiOp = BiOp {
         token: "/".to_owned(),
-        precedence: 0,
+        precedence: 1,
         associativity: Associativity::LEFT,
         func: |e1, e2| e1 / e2,
     };
     pub static ref POWER: BiOp = BiOp {
         token: "^".to_owned(),
-        precedence: 0,
+        precedence: 2,
         associativity: Associativity::RIGHT,
         func: |e1, e2| e1.powf(e2),
     };
