@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 pub use error::Error;
 pub use token::ParserToken;
 use ParseState::*;
@@ -129,7 +127,7 @@ fn check_arity(token: &ParserToken) -> Result<(), Error> {
     if let ParserToken::Func(func, n_args) = token {
         if func.arity != 0 && func.arity != *n_args {
             return Err(Error::ArityMismatch {
-                id: (&func.token).into(),
+                id: func.token.to_owned(),
                 expected: func.arity,
                 actual: *n_args,
             });

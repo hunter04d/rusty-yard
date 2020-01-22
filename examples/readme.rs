@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
-use rusty_yard::{evaluator, Ctx};
 use rusty_yard::operators::UOp;
+use rusty_yard::{evaluator, Ctx};
 
 fn main() {
     simple();
