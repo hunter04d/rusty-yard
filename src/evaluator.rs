@@ -8,15 +8,29 @@ use super::{
     Ctx,
 };
 
-#[derive(Debug, Error)]
+/// Represents the Error that can occur during the evaluation of the expression
+#[derive(Debug, Error, PartialEq)]
 pub enum Error {
+    /// Signifies that variable was not found in variable map
     #[error("Variable not found: {0}")]
     VarNotFound(String),
+    /// Signifies that evaluation stack has empty when a value was expected
     #[error("Eval stack is empty during processing")]
     EmptyEvalStack,
+
+    /// Signifies that an error occurred during expression parsing
+    ///
+    ///# Note
+    ///
+    ///This is only the case when one of the `eval_str` functions is called.
     #[error("Parser: {0}")]
     ParserError(#[from] parser::Error),
 
+    /// Signifies that a function has been called with different number of parameters than expected
+    ///
+    /// # Note
+    ///
+    /// This error is likely picked up in ParserError case, however it still can occur if you pass the tokens manually to one of `eval` functions.
     #[error("Arity of function {id} mismatched during evaluation: expected: {expected}, actual: {actual}")]
     ArityMismatch {
         id: String,
@@ -24,11 +38,15 @@ pub enum Error {
         actual: usize,
     },
 
+    /// Catch-all case when something unexpected happened
     #[error("Ill formed token steam")]
     Other,
 }
+
+/// Result type of this module with [`evaluator::Error`](Error) as Error type
 pub type Result = std::result::Result<f64, Error>;
 
+/// The main evaluation logic
 fn eval_internal(
     tokens: &[ParserToken],
     variables: &mut HashMap<String, f64>,
@@ -84,18 +102,155 @@ fn eval_internal(
     eval_stack.pop().ok_or(Error::Other)
 }
 
+/// Evaluate the input token stream and return the result of the evaluation.
+///
+/// Tokens can be produced by [`parse`](crate::parser::parse) or [`parse_str`](crate::parser::parse_str) function.
+///
+/// This uses the default context from `Ctx::default`.
+/// # Note
+///
+/// Tokens need to be in [reverse polish notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation).
+///
+/// # Example
+///
+/// ```
+/// use rusty_yard::evaluator::eval;
+/// use rusty_yard::parser::ParserToken;
+/// use rusty_yard::operators::binary::PLUS;
+///
+/// let  result = eval(&[ParserToken::Num(3.0), ParserToken::Num(4.0), ParserToken::BiOp(&PLUS)]);
+/// assert_eq!(result, Ok(7.0));
+/// ```
+pub fn eval(tokens: &[ParserToken]) -> Result {
+    eval_internal(tokens, &mut HashMap::new(), &Ctx::default())
+}
+
+/// Evaluate the input token stream with variables defined in `variables`.
+///
+/// Tokens can be produced by [`parse`](crate::parser::parse) or [`parse_str`](crate::parser::parse_str) function.
+///
+/// This uses the default context from `Ctx::default`.
+///
+/// # Note
+///
+/// Tokens need to be in [reverse polish notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation).
+///
+/// # Example
+///
+/// ```
+/// use rusty_yard::evaluator::eval_with_vars;
+/// use rusty_yard::parser::ParserToken;
+/// use rusty_yard::operators::binary::PLUS;
+/// use std::collections::HashMap;
+///
+/// let mut vars = HashMap::new();
+/// vars.insert("a".to_owned(), 3.0);
+/// vars.insert("b".to_owned(), 4.0);
+/// let result = eval_with_vars(&[ParserToken::Id("a"), ParserToken::Id("b"), ParserToken::BiOp(&PLUS)], &mut vars);
+/// assert_eq!(result, Ok(7.0));
+/// ```
 pub fn eval_with_vars(tokens: &[ParserToken], variables: &mut HashMap<String, f64>) -> Result {
     eval_internal(tokens, variables, &Ctx::default())
 }
 
+/// Evaluate the input token stream with variables defined in `variables`.
+///
+/// Tokens can be produced by [`parse`](crate::parser::parse) or [`parse_str`](crate::parser::parse_str) function.
+///
+/// This uses the Context provided as input.
+///
+/// # Note
+///
+/// Tokens need to be in [reverse polish notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation).
+///
+/// # Note
+///
+/// Ctx is mainly used during parsing. Since expression has already been parsed, ctx parameter is mostly useless (it can still be used in macros).
+///
+/// # Example
+///
+/// ```
+/// use rusty_yard::evaluator::eval_with_vars_and_ctx;
+/// use rusty_yard::parser::ParserToken;
+/// use rusty_yard::operators::binary::PLUS;
+/// use std::collections::HashMap;
+/// use rusty_yard::Ctx;
+/// use rusty_yard::macros::default::AssignParsed;
+///
+/// // use ctx that has default macros
+/// let ctx = Ctx::default_with_macros();
+/// let mut vars = HashMap::new();
+/// vars.insert("a".to_owned(), 3.0);
+/// let result = eval_with_vars_and_ctx(&[ParserToken::Num(7.0), ParserToken::Macro(Box::new(AssignParsed::new("a")))], &mut vars, &ctx);
+/// assert_eq!(result, Ok(7.0));
+/// assert_eq!(vars["a"], 7.0);
+/// ```
+pub fn eval_with_vars_and_ctx(
+    tokens: &[ParserToken],
+    variables: &mut HashMap<String, f64>,
+    ctx: &Ctx,
+) -> Result {
+    eval_internal(tokens, variables, ctx)
+}
+
+/// Evaluate the string with the expression inside
+///
+/// This uses the default context from `Ctx::default`
+///
+/// # Example
+///
+/// ```
+/// use rusty_yard::evaluator:: eval_str;
+/// use std::collections::HashMap;
+///
+/// let result = eval_str("3 + 4");
+/// assert_eq!(result, Ok(7.0));
+/// ```
 pub fn eval_str(input: &str) -> Result {
     eval_str_with_vars_and_ctx(input, &mut HashMap::new(), &Ctx::default())
 }
 
+/// Evaluate the string with the expression inside with variables defined in `variables`
+///
+/// This uses the default context from `Ctx::default`
+///
+/// # Example
+///
+/// ```
+/// use rusty_yard::evaluator::eval_str_with_vars;
+/// use std::collections::HashMap;
+///
+/// let mut vars = HashMap::new();
+/// vars.insert("a".to_owned(), 3.0);
+/// vars.insert("b".to_owned(), 4.0);
+/// let result = eval_str_with_vars("a + b", &mut vars);
+/// assert_eq!(result, Ok(7.0));
+/// ```
 pub fn eval_str_with_vars(input: &str, variables: &mut HashMap<String, f64>) -> Result {
     eval_str_with_vars_and_ctx(input, variables, &Ctx::default())
 }
 
+/// Evaluate the input token stream with variables defined in `variables`.
+///
+/// This uses the Context provided as the last parameter.
+///
+/// # Example
+///
+/// ```
+/// use rusty_yard::evaluator::eval_str_with_vars_and_ctx;
+/// use rusty_yard::parser::ParserToken;
+/// use rusty_yard::operators::binary::PLUS;
+/// use std::collections::HashMap;
+/// use rusty_yard::Ctx;
+/// use rusty_yard::macros::default::AssignParsed;
+///
+/// // use ctx that has default macros
+/// let ctx = Ctx::default_with_macros();
+/// let mut vars = HashMap::new();
+/// let result = eval_str_with_vars_and_ctx("a = 7.0", &mut vars, &ctx);
+/// assert_eq!(result, Ok(7.0));
+/// assert_eq!(vars["a"], 7.0);
+/// ```
 pub fn eval_str_with_vars_and_ctx(
     input: &str,
     variables: &mut HashMap<String, f64>,

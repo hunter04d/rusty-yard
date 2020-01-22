@@ -44,6 +44,12 @@ pub struct AssignParsed<'a> {
     id: &'a str,
 }
 
+impl<'a> AssignParsed<'a> {
+    pub fn new(id: &'a str) -> Self {
+        Self { id }
+    }
+}
+
 impl<'a> ParsedMacro for AssignParsed<'a> {
     fn eval(
         &self,

@@ -6,10 +6,8 @@ use super::functions::Func;
 use super::macros::{ApplyMode, ParsedMacro};
 use super::operators::binary::Associativity;
 use super::operators::{BiOp, UOp};
-use super::{
-    tokenizer::{get_token_text, Token},
-    Ctx,
-};
+use super::tokenizer::{self, get_token_text, Token};
+use super::Ctx;
 
 mod error;
 mod token;
@@ -36,13 +34,20 @@ fn to_parser_token<'a>(
     }
 }
 
+/// Represents the current state of the parser
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum ParseState {
+    /// The state signaling that the next token is expected to be an expression
     ExpectExpression,
+    /// The state signaling that the next token is expected to be an operator
     ExpectOperator,
 }
 
-pub fn parse<'a>(tokens: &'a [Token<'a>], ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
+/// Parses the input tokens into steam of [`ParserTokens`](ParserToken) in Reverse polish notation order
+pub fn parse<'a, 'tokens>(
+    tokens: &'tokens [Token<'a>],
+    ctx: &'a Ctx,
+) -> Result<Vec<ParserToken<'a>>, Error> {
     let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = ExpectExpression;
@@ -121,6 +126,17 @@ pub fn parse<'a>(tokens: &'a [Token<'a>], ctx: &'a Ctx) -> Result<Vec<ParserToke
         queue.push(token);
     }
     Ok(queue)
+}
+
+/// Parses the input string into a stream of [`ParsedTokens`](ParserToken).
+///
+/// This tokenizes the input first using [`tokenizer::tokenize`](crate::tokenizer::tokenize)
+/// and then parses it using [`parse`](parse).
+///
+/// This uses the ctx provided as the last parameter.
+pub fn parse_str<'a>(input: &'a str, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
+    let tokens = tokenizer::tokenize(input, ctx);
+    parse(&tokens, ctx)
 }
 
 fn check_arity(token: &ParserToken) -> Result<(), Error> {
@@ -237,8 +253,8 @@ mod tests {
     }
     fn get_ctx() -> Ctx {
         let mut ctx = Ctx::empty();
-        ctx.bi_ops.insert(get_biop());
-        ctx.u_ops.insert(get_uop());
+        ctx.bi_ops.push(get_biop());
+        ctx.u_ops.push(get_uop());
         ctx
     }
 

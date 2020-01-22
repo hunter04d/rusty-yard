@@ -2,6 +2,10 @@ use crate::functions::Func;
 use crate::macros::ParsedMacro;
 use crate::operators::{BiOp, UOp};
 
+/// Represents the parser token.
+///
+/// Parser tokens make up the RPN token stream (`&[ParserToken]`) that can be evaluated using [`evaluator::eval`](crate::evaluator::eval)
+/// and similar functions.
 #[derive(Debug)]
 pub enum ParserToken<'a> {
     Num(f64),
