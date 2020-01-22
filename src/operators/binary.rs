@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt::{self, Debug, Formatter};
 
 use lazy_static::lazy_static;
@@ -55,12 +54,12 @@ lazy_static! {
         func: |e1, e2| e1.powf(e2),
     };
 }
-pub fn default_operators() -> HashSet<BiOp> {
-    let mut s = HashSet::new();
-    s.insert(PLUS.clone());
-    s.insert(MINUS.clone());
-    s.insert(MULTIPLY.clone());
-    s.insert(DIVIDE.clone());
-    s.insert(POWER.clone());
-    s
+pub fn default_operators() -> Vec<BiOp> {
+    vec![
+        PLUS.clone(),
+        MINUS.clone(),
+        MULTIPLY.clone(),
+        DIVIDE.clone(),
+        POWER.clone(),
+    ]
 }

@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use functions::Func;
 use macros::Macro;
 use operators::{binary, unary};
@@ -17,14 +15,14 @@ pub mod parser;
 pub mod tokenizer;
 
 pub struct Ctx {
-    pub bi_ops: HashSet<BiOp>,
-    pub u_ops: HashSet<UOp>,
-    pub fns: HashSet<Func>,
+    pub bi_ops: Vec<BiOp>,
+    pub u_ops: Vec<UOp>,
+    pub fns: Vec<Func>,
     pub macros: Vec<Box<dyn Macro>>,
 }
 
 impl Ctx {
-    pub fn new(bi_ops: HashSet<BiOp>, u_ops: HashSet<UOp>, fns: HashSet<Func>) -> Self {
+    pub fn new(bi_ops: Vec<BiOp>, u_ops: Vec<UOp>, fns: Vec<Func>) -> Self {
         Self {
             bi_ops,
             u_ops,
@@ -35,9 +33,9 @@ impl Ctx {
 
     pub fn empty() -> Self {
         Self {
-            bi_ops: HashSet::new(),
-            u_ops: HashSet::new(),
-            fns: HashSet::new(),
+            bi_ops: Vec::new(),
+            u_ops: Vec::new(),
+            fns: Vec::new(),
             macros: Vec::new(),
         }
     }

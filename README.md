@@ -65,7 +65,7 @@ fn main() {
     // default ctx with operators one might expect for shunting yard
     let mut ctx = Ctx::default();
     // add unary '$$$' operator with some action
-    ctx.u_ops.insert(UOp {
+    ctx.u_ops.push(UOp {
         token: "$$$".to_owned(),
         func: |v| v * 1000.0,
     });

@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt::{self, Debug, Formatter};
 
 use lazy_static::lazy_static;
@@ -25,9 +24,6 @@ lazy_static! {
     };
 }
 
-pub fn default_operators() -> HashSet<UOp> {
-    let mut s = HashSet::new();
-    s.insert(NEGATE.clone());
-    s.insert(PLUS.clone());
-    s
+pub fn default_operators() -> Vec<UOp> {
+    vec![PLUS.clone(), NEGATE.clone()]
 }

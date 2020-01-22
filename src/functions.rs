@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::fmt::{Debug, Formatter};
 use std::hash::{Hash, Hasher};
 
@@ -88,11 +87,11 @@ lazy_static! {
     };
 }
 
-pub fn default_functions() -> HashSet<Func> {
-    let mut s = HashSet::new();
-    s.insert(FN_MAX.clone());
-    s.insert(FN_SUM.clone());
-    s.insert(FN_PROD.clone());
-    s.insert(FN_SUB.clone());
-    s
+pub fn default_functions() -> Vec<Func> {
+    vec![
+        FN_MAX.clone(),
+        FN_SUM.clone(),
+        FN_SUM.clone(),
+        FN_PROD.clone(),
+    ]
 }
