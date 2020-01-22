@@ -13,3 +13,8 @@ thiserror = "1.0"
 
 [dev-dependencies]
 proptest = "0.9"
+criterion = "0.3.0"
+
+[[bench]]
+name = "full"
+harness = false
