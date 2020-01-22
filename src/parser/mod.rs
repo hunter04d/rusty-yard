@@ -42,7 +42,7 @@ pub enum ParseState {
     ExpectOperator,
 }
 
-pub fn parse<'a>(tokens: &'a Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
+pub fn parse<'a>(tokens: &'a [Token<'a>], ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
     let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = ExpectExpression;
@@ -55,14 +55,14 @@ pub fn parse<'a>(tokens: &'a Vec<Token<'a>>, ctx: &'a Ctx) -> Result<Vec<ParserT
                 parse_state = ExpectOperator;
             }
             Token::Id(id) => {
-                let next_stack_value: Option<OperatorStackValue> = find_uop(ctx, id, &parse_state)
+                let next_stack_value: Option<OperatorStackValue> = find_uop(ctx, id, parse_state)
                     .or_else(|| find_biop(ctx, id, &mut queue, &mut operator_stack))
-                    .or_else(|| find_func(ctx, id, &parse_state));
+                    .or_else(|| find_func(ctx, id, parse_state));
                 match next_stack_value {
                     // is variable
                     None => {
                         parse_state = ExpectOperator;
-                        queue.push(ParserToken::Id(id.clone()));
+                        queue.push(ParserToken::Id(id));
                     }
                     // is operator
                     Some(sv) => {
@@ -155,11 +155,11 @@ fn pop_operator_stack<'a>(
             queue.push(token);
         }
     }
-    return if found_left_paren || !expect_left_paren {
+    if found_left_paren || !expect_left_paren {
         Ok(())
     } else {
         Err(Error::MismatchedRightParen)
-    };
+    }
 }
 
 fn find_biop<'a, 'b>(
@@ -193,11 +193,7 @@ fn find_biop<'a, 'b>(
     Some(OperatorStackValue::BiOp(b_op))
 }
 
-fn find_uop<'a>(
-    ctx: &'a Ctx,
-    id: &str,
-    parse_state: &ParseState,
-) -> Option<OperatorStackValue<'a>> {
+fn find_uop<'a>(ctx: &'a Ctx, id: &str, parse_state: ParseState) -> Option<OperatorStackValue<'a>> {
     let u_op = ctx.u_ops.iter().find(|op| op.token == id)?;
     match parse_state {
         ExpectExpression => Some(OperatorStackValue::UOp(u_op)),
@@ -208,7 +204,7 @@ fn find_uop<'a>(
 fn find_func<'a>(
     ctx: &'a Ctx,
     id: &str,
-    parse_state: &ParseState,
+    parse_state: ParseState,
 ) -> Option<OperatorStackValue<'a>> {
     let func = ctx.fns.iter().find(|op| op.token == id)?;
     match parse_state {

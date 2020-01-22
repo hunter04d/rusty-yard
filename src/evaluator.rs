@@ -30,13 +30,12 @@ pub enum Error {
 pub type Result = std::result::Result<f64, Error>;
 
 fn eval_internal(
-    tokens: &Vec<ParserToken>,
+    tokens: &[ParserToken],
     variables: &mut HashMap<String, f64>,
     ctx: &Ctx,
 ) -> Result {
     let mut eval_stack: Vec<f64> = Vec::new();
-    let mut iter = tokens.iter();
-    while let Some(token) = iter.next() {
+    for token in tokens {
         match *token {
             ParserToken::Num(n) => {
                 eval_stack.push(n);
@@ -85,7 +84,7 @@ fn eval_internal(
     eval_stack.pop().ok_or(Error::Other)
 }
 
-pub fn eval_with_vars(tokens: &Vec<ParserToken>, variables: &mut HashMap<String, f64>) -> Result {
+pub fn eval_with_vars(tokens: &[ParserToken], variables: &mut HashMap<String, f64>) -> Result {
     eval_internal(tokens, variables, &Ctx::default())
 }
 

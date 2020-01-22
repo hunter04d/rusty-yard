@@ -81,6 +81,7 @@ pub fn tokenize<'a>(input: &'a str, ctx: &'a Ctx) -> Vec<Token<'a>> {
     output
 }
 
+#[allow(clippy::while_let_on_iterator)]
 pub fn match_id(text: &str) -> Match {
     const DISALLOWED_CHARS: &str = "(),";
     let is_disallowed = |ch: char| DISALLOWED_CHARS.chars().any(|v| v == ch);
@@ -126,6 +127,7 @@ fn match_op(text: &str, ctx: &Ctx) -> Match {
     matched_bi_op.or_else(matched_u_op).map(|s| s)
 }
 
+#[allow(clippy::while_let_on_iterator)]
 pub fn match_number(text: &str) -> Match {
     let mut iterator = text.chars();
     if let Some(ch) = iterator.next() {

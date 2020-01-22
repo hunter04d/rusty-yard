@@ -7,6 +7,8 @@ use operators::{BiOp, UOp};
 
 use crate::macros::default::Assign;
 
+// reason api not stable
+#[allow(clippy::implicit_hasher)]
 pub mod evaluator;
 pub mod functions;
 pub mod macros;
