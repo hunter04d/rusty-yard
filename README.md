@@ -8,6 +8,13 @@ This library provides a generic implementation of the [shunting yard algorithm](
 
 This is a simple project to learn the way of rust. As such the api can be rough in some places and is subject to change at any moment (patch versions are probably fine).
 
+## But Why?
+
+This crate was created with a single purpose, to learn the rust language and ecosystem.
+
+The use case for this library is very niche (if there is a use case).
+However, I would be pleased to know if somebody has found the use case for this crate.
+
 ## Usage
 
 For now the crate is only available via git:
@@ -106,9 +113,9 @@ To implement your own macro you need to implement `Macro` and `ParsedMacro` trai
 
 Note: the macros are even more experimental than the rest of the crate. Implementing your own macros is not recommended at this moment.
 
-## This to do
+## Things to do
 
-- [ ] Document the crate
+- [ ]  Provide better crate documentation 
 - [ ] More tests, a lot more tests
 - [ ] Allow anything that implements `FromStr` to be used as primitive
 - [ ] Allow customizing definition of id/num in tokenizer

@@ -1,3 +1,4 @@
+//! This module contains the necessary types to implement your own macros.
 use std::collections::HashMap;
 use std::fmt::Debug;
 
@@ -10,18 +11,27 @@ use super::Ctx;
 
 pub mod default;
 
+/// Specifies how the macro should be parsed in relation to other tokens.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum ApplyMode {
+    /// The macro will be put directly into output queue at the same time as it was parsed.
     Before,
+    /// The macro will be put into operator stack.
+    ///
+    /// Expression after the macro will be evaluated first by [`evaluator`](crate::evaluator).
     After,
 }
 
 impl Default for ApplyMode {
+    /// The default and more natural apply mode is [`ApplyMode::Before`](ApplyMode::Before)
     fn default() -> Self {
         Before
     }
 }
 
+/// The result of parsing the macro
+///
+/// Contains information on how the parser should continue parsing after this macro has been parsed.
 pub struct MacroParse<'a> {
     pub(crate) result: Box<dyn ParsedMacro + 'a>,
     pub(crate) mode: ApplyMode,
@@ -30,6 +40,9 @@ pub struct MacroParse<'a> {
 }
 
 impl<'a> MacroParse<'a> {
+    /// Creates parsed macro with [`ApplyMode::Before`](ApplyMode::Before)
+    ///
+    /// `expected_state` is the state the macro expects the parser to be after the parsing of this macro
     pub fn before(result: impl ParsedMacro + 'a, expected_state: ParseState) -> Self {
         MacroParse {
             result: Box::new(result),
@@ -37,6 +50,10 @@ impl<'a> MacroParse<'a> {
             state_after: expected_state,
         }
     }
+
+    /// Creates parsed macro with [`ApplyMode::Before`](ApplyMode::Before)
+    ///
+    /// `expected_state` is the state the macro expects the parser to be after the parsing of this macro
     pub fn after(result: impl ParsedMacro + 'a, expected_state: ParseState) -> Self {
         MacroParse {
             result: Box::new(result),
@@ -46,9 +63,19 @@ impl<'a> MacroParse<'a> {
     }
 }
 
+/// Implement this trait (+ [`Debug`](std::fmt::Debug) to create your own macro).
 pub trait Macro: Debug {
+    /// Match the start of the `input` with this macro.
+    ///
+    /// Returns [`Some(length of the match)`](std::option::Option::Some) if the start of the `input` matched this macro
+    /// and [`None`](std::option::Option::None) when input hasn't matched this macro.
     fn match_input(&self, input: &str) -> Match;
 
+    /// Parse this macro
+    ///
+    /// `input` contains exactly the string that was matched using [`match_input`](Macro::match_input) function.
+    ///
+    /// `current_state` contains the current state of the parser.
     fn parse<'a>(
         &self,
         input: &'a str,
@@ -56,7 +83,15 @@ pub trait Macro: Debug {
     ) -> Result<MacroParse<'a>, parser::Error>;
 }
 
+/// Represents the Parsed macro.
+///
+/// Types implementing this trait should contain all the information necessary to evaluate this macro.
+///
+/// Don't forget to derive or implement [`Debug`](std::fmt::Debug).
 pub trait ParsedMacro: Debug {
+    /// Evaluate this parsed macro
+    ///
+    /// Arguments contain the current state of the evaluator.
     fn eval(
         &self,
         eval_stack: &mut Vec<f64>,

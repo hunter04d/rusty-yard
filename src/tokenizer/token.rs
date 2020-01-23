@@ -1,17 +1,38 @@
 use crate::macros::Macro;
 
+/// Represent tokenizers token, generally produced by [`tokenizer::tokenize`](super::tokenize).
 #[derive(Debug)]
 pub enum Token<'a> {
+    /// Open parenthesis ('(') token.
     OpenParen,
+    /// Closes parenthesis (')') token.
     ClosedParen,
+    /// Comma token (',').
     Comma,
+    /// Identifier token.
+    ///
+    /// The definition is very relaxed by design (one or more characters that are `|char| char.is_ascii_graphic()` but not '(', ')', ',')
     Id(&'a str),
+    /// Primitive (number).
     Num(f64),
     // TODO: is this reasonable behaviour?
-    // Bad token might merge 2 tokens separated by whitespace, as such it has to allocate
-    // example: \x01<space>\x01 results in one bad token <BAD TOKEN>(\x01\x01)
+    /// Represents the bad token, i.e it could not be tokenized by any other rules.
+    ///
+    /// Bad token might merge 2 tokens separated by whitespace, as such it has to allocate.
+    /// # Example
+    ///
+    /// \x01<space>\x01 results in one bad token <BAD TOKEN>(\x01\x01)
     BadToken(String),
-    Macro { defn: &'a dyn Macro, text: &'a str },
+
+    /// Macro token
+    ///
+    /// Macros and the fist to match, so you can override any default behavior of any other variants using macros.
+    Macro {
+        /// Reference to macro definition
+        defn: &'a dyn Macro,
+        /// Text that matched using `Macro::match`(crate::macros::Macro::match).
+        text: &'a str,
+    },
 }
 
 impl PartialEq for Token<'_> {

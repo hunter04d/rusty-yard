@@ -1,3 +1,10 @@
+//! This crate provides some functions to [tokenize](crate::tokenizer), [parse](crate::parser), and [evaluate](crate::evaluator) expressions.
+//!
+//! It uses [reverse polish notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation) and
+//! [shunting yard algorithm](https://en.wikipedia.org/wiki/Shunting-yard_algorithm]) to do so.
+//!
+//! See [evaluator](crate::evaluator) documentation to get started with high level api that allows you to evaluate strings directly.
+#![deny(missing_docs)]
 use functions::Func;
 use macros::Macro;
 use operators::{binary, unary};
@@ -14,14 +21,23 @@ pub mod operators;
 pub mod parser;
 pub mod tokenizer;
 
+/// The context of the expression
+///
+/// It is used to make [tokenization](crate::tokenizer) more resalable form human perspective and
+/// to actually parse the expression into a steam of tokens that can be executed by [`evaluator`](crate::evaluator).
 pub struct Ctx {
+    /// Binary operators
     pub bi_ops: Vec<BiOp>,
+    /// Unary operators
     pub u_ops: Vec<UOp>,
+    /// Functions that this context contains
     pub fns: Vec<Func>,
+    /// Macros that this context contains
     pub macros: Vec<Box<dyn Macro>>,
 }
 
 impl Ctx {
+    /// Creates new context with context items passes as the parameters.
     pub fn new(bi_ops: Vec<BiOp>, u_ops: Vec<UOp>, fns: Vec<Func>) -> Self {
         Self {
             bi_ops,
@@ -31,6 +47,7 @@ impl Ctx {
         }
     }
 
+    /// Creates new empty context.
     pub fn empty() -> Self {
         Self {
             bi_ops: Vec::new(),
@@ -40,6 +57,7 @@ impl Ctx {
         }
     }
 
+    /// Creates new default context that is similar to the one produced by [`default`](std::default::Default::default) but also has default macros enabled.
     pub fn default_with_macros() -> Self {
         Self {
             macros: vec![Box::new(Assign)],
@@ -49,6 +67,13 @@ impl Ctx {
 }
 
 impl Default for Ctx {
+    /// Creates new default `Ctx`.
+    ///
+    /// This uses:
+    ///
+    /// - [binary::default_operators](crate::operators::binary::default_operators) to populate binary operators;
+    /// - [unary::default_operators](crate::operators::unary::default_operators) to populate binary operators;
+    /// - [functions::default_functions](crate::functions::default_functions) to populate functions.
     fn default() -> Self {
         Self {
             bi_ops: binary::default_operators(),

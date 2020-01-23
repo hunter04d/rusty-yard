@@ -1,3 +1,9 @@
+//! Parsing module
+//!
+//! Exposes a function and associated types that parse the [`Tokens`](crate::tokenizer::Token)
+//! into the stream of [`ParserTokens`](ParserToken) in [reverse polish notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation).
+//!
+//! The parser implementation uses the [`context`](crate::Ctx) to categorize input tokens of [`Token::Id`](crate::tokenizer::Token::Id) into VariableId, Function, Binary Operator and others.
 pub use error::Error;
 pub use token::ParserToken;
 use ParseState::*;

@@ -2,7 +2,6 @@ use thiserror::Error;
 
 /// Represents the error that a parser can output
 #[derive(Error, Debug, PartialEq)]
-#[error("Parser Error")]
 pub enum Error {
     /// left paren has not been found after identifier that represents a function
     #[error("Expected left paren after function id")]
@@ -26,8 +25,11 @@ pub enum Error {
     /// Signifies that a function has been called with different number of parameters than expected
     #[error("Arity of function {id} mismatched: expected: {expected}, actual: {actual}")]
     ArityMismatch {
+        /// Identifier of the mismatched function
         id: String,
+        /// Expected number of parameters to the function
         expected: usize,
+        /// Actual number of parameters passed to the function
         actual: usize,
     },
 

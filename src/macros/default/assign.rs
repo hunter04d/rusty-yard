@@ -5,6 +5,18 @@ use crate::parser::ParseState;
 use crate::tokenizer::{match_id, match_str, skip_whitespace, Match};
 use crate::{evaluator, parser, Ctx};
 
+/// The assign macro.
+///
+/// # Matching
+///
+/// This macro matches the following input:
+/// ```text
+/// {id}<spaces>=
+/// ```
+/// # Evaluation
+///
+/// This macro assigns the matched identifier the result of expression on the left of `=`
+/// and returns that expression.
 #[derive(Debug)]
 pub struct Assign;
 
@@ -39,12 +51,21 @@ impl Macro for Assign {
     }
 }
 
+/// Parsed assign macro
 #[derive(Debug)]
 pub struct AssignParsed<'a> {
     id: &'a str,
 }
 
 impl<'a> AssignParsed<'a> {
+    /// Creates a new instance of this parsed macro
+    ///
+    /// `id` is the name of the variable to assign the value into
+    ///
+    /// # Note
+    ///
+    /// In the sequence of parser tokens this macro comes **after**
+    /// the expression which value will be assigns to macros variable.
     pub fn new(id: &'a str) -> Self {
         Self { id }
     }

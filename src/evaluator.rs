@@ -1,12 +1,27 @@
+//! Provides high and low level api for expression execution.
+//!
+//! Functions in this module are using the [`context`](crate::Ctx) only for macro support,
+//! because macros are allowed to query the contents of the context.
+//! In most use cases it is possible to just pass [`empty`](crate::Ctx::empty) or [`default`](std::default::Default) context.
+//!
+//! # Example
+//!
+//! Here is a high level example:
+//!
+//! ```
+//! use rusty_yard::evaluator::eval_str;
+//! assert_eq!(eval_str("10 + 10 * 10"), Ok(110.0));
+//! ```
+//!
+
+#![deny(missing_docs)]
 use std::collections::HashMap;
 
 use thiserror::Error;
 
-use super::{
-    parser::{self, parse, ParserToken},
-    tokenizer::tokenize,
-    Ctx,
-};
+use super::parser::{self, parse, ParserToken};
+use super::tokenizer::tokenize;
+use super::Ctx;
 
 /// Represents the Error that can occur during the evaluation of the expression
 #[derive(Debug, Error, PartialEq)]
@@ -33,8 +48,11 @@ pub enum Error {
     /// This error is likely picked up in ParserError case, however it still can occur if you pass the tokens manually to one of `eval` functions.
     #[error("Arity of function {id} mismatched during evaluation: expected: {expected}, actual: {actual}")]
     ArityMismatch {
+        /// Identifier of the mismatched function
         id: String,
+        /// Expected number of parameters to the function
         expected: usize,
+        /// Actual number of parameters passed to the function
         actual: usize,
     },
 
@@ -153,7 +171,7 @@ pub fn eval_with_vars(tokens: &[ParserToken], variables: &mut HashMap<String, f6
     eval_internal(tokens, variables, &Ctx::default())
 }
 
-/// Evaluate the input token stream with variables defined in `variables`.
+/// Evaluate the input token stream with variables defined in `variables` and custom [context](crate::Ctx).
 ///
 /// Tokens can be produced by [`parse`](crate::parser::parse) or [`parse_str`](crate::parser::parse_str) function.
 ///
@@ -230,7 +248,7 @@ pub fn eval_str_with_vars(input: &str, variables: &mut HashMap<String, f64>) -> 
     eval_str_with_vars_and_ctx(input, variables, &Ctx::default())
 }
 
-/// Evaluate the input token stream with variables defined in `variables`.
+/// Evaluate the input token stream with variables defined in `variables` and custom [context](crate::Ctx)..
 ///
 /// This uses the Context provided as the last parameter.
 ///

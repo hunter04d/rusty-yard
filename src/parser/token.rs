@@ -8,11 +8,22 @@ use crate::operators::{BiOp, UOp};
 /// and similar functions.
 #[derive(Debug)]
 pub enum ParserToken<'a> {
+    /// Represents the primitive (number of type f64).
     Num(f64),
+    /// Represents a variable identifier.
     Id(&'a str),
+    /// Represents a [`Unary operator`](crate::operators::UOp).
     UOp(&'a UOp),
+    /// Represents a [`Binary operator`](crate::operators::BiOp).
     BiOp(&'a BiOp),
+    /// Represents the [`function`](crate::functions::Func).
+    ///
+    /// `.1` is the number of parameters the function has called with.
+    /// It is equivalent to `Func.arity`, unless function is variadic.
+    /// In that case it represents the actual number of parameters the function was called with.
     Func(&'a Func, usize),
+
+    /// Represents a [`ParsedMacro`](crate::macros::ParsedMacro)
     Macro(Box<dyn ParsedMacro + 'a>),
 }
 
@@ -43,5 +54,17 @@ impl<'a> From<&'a BiOp> for ParserToken<'a> {
 impl<'a> From<&'a UOp> for ParserToken<'a> {
     fn from(op: &'a UOp) -> Self {
         ParserToken::UOp(&op)
+    }
+}
+
+impl<'a> From<(&'a Func, usize)> for ParserToken<'a> {
+    fn from(tuple: (&'a Func, usize)) -> Self {
+        ParserToken::Func(tuple.0, tuple.1)
+    }
+}
+
+impl<'a, Macro: ParsedMacro + 'a> From<Macro> for ParserToken<'a> {
+    fn from(m: Macro) -> Self {
+        ParserToken::Macro(Box::new(m))
     }
 }
