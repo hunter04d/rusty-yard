@@ -115,9 +115,10 @@ Note: the macros are even more experimental than the rest of the crate. Implemen
 
 ## Things to do
 
-- [ ]  Provide better crate documentation 
+- [ ] Provide better crate documentation 
 - [ ] More tests, a lot more tests
 - [ ] Allow anything that implements `FromStr` to be used as primitive
 - [ ] Allow customizing definition of id/num in tokenizer
 - [ ] Helpers for matching, tokenizing, parsing, executing
 - [ ] Think about the macro interface
+- [ ] Postfix operators (factorial)

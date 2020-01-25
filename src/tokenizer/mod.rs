@@ -206,7 +206,7 @@ pub fn match_op(text: &str, ctx: &Ctx) -> Match {
 ///
 /// Returns [`Some(length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't matched any BiOp.
-pub fn match_bi_op(text: &str, bi_ops: &Vec<BiOp>) -> Match {
+pub fn match_bi_op(text: &str, bi_ops: &[BiOp]) -> Match {
     bi_ops
         .iter()
         .find(|op| text.starts_with(&op.token))
@@ -217,7 +217,7 @@ pub fn match_bi_op(text: &str, bi_ops: &Vec<BiOp>) -> Match {
 ///
 /// Returns [`Some(matched macro, length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't matched any UOp.
-pub fn match_u_op(text: &str, u_ops: &Vec<UOp>) -> Match {
+pub fn match_u_op(text: &str, u_ops: &[UOp]) -> Match {
     u_ops
         .iter()
         .find(|op| text.starts_with(&op.token))
@@ -260,6 +260,7 @@ pub fn match_number(text: &str) -> Match {
 ///
 /// Returns [`Some(number_of_chars_matched)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't match the string.
+#[cfg_attr(tarpaulin, skip)]
 pub fn match_str(text: &str, str_to_match: &str) -> Match {
     if text.starts_with(str_to_match) {
         Some(str_to_match.len())
@@ -270,6 +271,7 @@ pub fn match_str(text: &str, str_to_match: &str) -> Match {
 /// Returns the number of whitespaces that are at the beginning of input 'text'
 ///
 /// This is useful in implementing your own macros
+#[cfg_attr(tarpaulin, skip)]
 pub fn skip_whitespace(text: &str) -> usize {
     text.chars()
         .take_while(|ch| ch.is_ascii_whitespace())
@@ -305,15 +307,14 @@ mod tests {
     #[test]
     fn test_tokenize() {
         let ctx = Ctx::empty();
-        let expected = vec![
-            vec![Num(1.0), Id("op"), Num(1.0)],
-            vec![Id("-"), Num(1.0)],
-            vec![Id("pi"), OpenParen, ClosedParen],
+        let input_expected = &[
+            ("1.0 op 1.0", vec![Num(1.0), Id("op"), Num(1.0)]),
+            ("- 1.0", vec![Id("-"), Num(1.0)]),
+            ("pi()", vec![Id("pi"), OpenParen, ClosedParen]),
         ];
-        let input = vec!["1.0 op 1.0", "- 1.0", "pi()"];
-        for (expected, input) in expected.into_iter().zip(input) {
+        for (input, expected) in input_expected {
             let output = tokenize(input, &ctx);
-            assert_eq!(expected, output);
+            assert_eq!(output, *expected);
         }
     }
 
@@ -321,7 +322,7 @@ mod tests {
     fn test_match_number_fails() {
         let str = "not a number";
         let res = match_number(str);
-        assert_eq!(None, res);
+        assert_eq!(res, None);
     }
 
     #[test]
@@ -331,7 +332,7 @@ mod tests {
         let res = tokenize(s, &ctx);
         assert_eq!(1, res.len());
         if let Token::BadToken(bad_token) = &res[0] {
-            assert_eq!(s, *bad_token);
+            assert_eq!(*bad_token, s);
         }
     }
 }

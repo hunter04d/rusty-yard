@@ -36,6 +36,7 @@ pub enum Token<'a> {
 }
 
 impl PartialEq for Token<'_> {
+    #[cfg_attr(tarpaulin, skip)]
     fn eq(&self, other: &Self) -> bool {
         use Token::*;
         if std::mem::discriminant(self) != std::mem::discriminant(other) {

@@ -52,7 +52,7 @@ pub struct Func {
 }
 
 /// Represents an error that can occur when calling [`Func::call`](Func::call).
-#[derive(Debug, Error)]
+#[derive(Debug, Error, PartialEq)]
 #[error("Mismatched number of parameters when calling the function, expected: {expected}, actual: {actual}")]
 pub struct Error {
     /// Expected number of parameters to the function.
@@ -82,6 +82,7 @@ impl Func {
 
 // Because func is magic we need to implement all markers our self
 impl PartialEq for Func {
+    #[cfg_attr(tarpaulin, skip)]
     fn eq(&self, other: &Self) -> bool {
         self.token.eq(&other.token)
             && self.arity.eq(&other.arity)
@@ -90,6 +91,7 @@ impl PartialEq for Func {
 }
 
 impl Hash for Func {
+    #[cfg_attr(tarpaulin, skip)]
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.token.hash(state);
         self.arity.hash(state);
@@ -101,16 +103,23 @@ impl Eq for Func {}
 
 impl Debug for Func {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "Fn {}({})", self.token, self.arity)
+        f.debug_struct("Func")
+            .field("token", &self.token)
+            .field("arity", &self.arity)
+            .finish()
     }
 }
 
+// TODO v0.3: remove
 #[allow(missing_docs)]
+#[cfg_attr(tarpaulin, skip)]
 pub fn to_args_1(func: fn(f64) -> f64) -> impl Fn(&[f64]) -> f64 {
     move |args| func(args[0])
 }
 
+// TODO v0.3: remove
 #[allow(missing_docs)]
+#[cfg_attr(tarpaulin, skip)]
 pub fn to_args_2(func: fn(f64, f64) -> f64) -> impl Fn(&[f64]) -> f64 {
     move |args| func(args[0], args[1])
 }
@@ -184,7 +193,63 @@ pub fn default_functions() -> Vec<Func> {
     vec![
         FN_MAX.clone(),
         FN_SUM.clone(),
-        FN_SUM.clone(),
+        FN_SUB.clone(),
         FN_PROD.clone(),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_debug() {
+        let func = Func {
+            token: "#".to_owned(),
+            arity: 0,
+            func: |_| 0.0,
+        };
+        let dbg = format!("{:?}", func);
+        assert!(dbg.contains("Func"));
+        assert!(dbg.contains("token"));
+        assert!(dbg.contains("#"));
+        assert!(dbg.contains("arity"));
+        assert!(dbg.contains(&format!("{:?}", 0usize)));
+    }
+
+    #[test]
+    fn test_call() {
+        let func = Func {
+            token: "#".to_owned(),
+            arity: 1,
+            func: |_| 0.0,
+        };
+        assert_eq!(func.call(&[1.0]), Ok(0.0));
+        assert_eq!(
+            func.call(&[1.0, 1.0]),
+            Err(Error {
+                expected: 1,
+                actual: 2
+            })
+        );
+        assert_eq!(
+            func.call(&[]),
+            Err(Error {
+                expected: 1,
+                actual: 0
+            })
+        );
+    }
+    #[test]
+    fn test_call_variadic() {
+        let func = Func {
+            token: "#".to_owned(),
+            arity: 0,
+            func: |_| 0.0,
+        };
+        assert_eq!(func.call(&[]), Ok(0.0));
+        assert_eq!(func.call(&[1.0]), Ok(0.0));
+        assert_eq!(func.call(&[1.0, 1.0]), Ok(0.0));
+        assert_eq!(func.call(&[1.0, 1.0, 1.0]), Ok(0.0));
+    }
 }

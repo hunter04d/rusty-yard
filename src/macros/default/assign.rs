@@ -13,6 +13,7 @@ use crate::{evaluator, parser, Ctx};
 /// ```text
 /// {id}<spaces>=
 /// ```
+///
 /// # Evaluation
 ///
 /// This macro assigns the matched identifier the result of expression on the left of `=`
@@ -22,15 +23,14 @@ pub struct Assign;
 
 impl Macro for Assign {
     fn match_input(&self, input: &str) -> Match {
-        match_id(input)
-            .map(|len| {
-                let input = &input[len..];
-                skip_whitespace(input) + len
-            })
-            .and_then(|len| {
-                let input = &input[len..];
-                match_str(input, "=").map(|m| m + len)
-            })
+        let id_len = match_id(input)?;
+
+        if (&input[..id_len]).ends_with('=') {
+            return if id_len != 1 { Some(id_len) } else { None };
+        }
+        let whitespace = skip_whitespace(&input[id_len..]);
+        let eq_len = match_str(&input[(id_len + whitespace)..], "=")?;
+        Some(id_len + whitespace + eq_len)
     }
 
     fn parse<'a>(
@@ -38,16 +38,19 @@ impl Macro for Assign {
         input: &'a str,
         current_state: ParseState,
     ) -> Result<MacroParse<'a>, parser::Error> {
-        if let ParseState::ExpectExpression = current_state {
-            let len = match_id(input).unwrap();
-            let id = &input[..len];
-            Ok(MacroParse::after(
-                AssignParsed { id },
-                ParseState::ExpectExpression,
-            ))
-        } else {
-            Err(parser::Error::ExpectedExpression)
+        if let ParseState::Operator = current_state {
+            return Err(parser::Error::ExpectedExpression);
         }
+        let len = match_id(input).unwrap();
+        let id = if input.len() == len {
+            &input[..len - 1]
+        } else {
+            &input[..len]
+        };
+        Ok(MacroParse::after(
+            AssignParsed { id },
+            ParseState::Expression,
+        ))
     }
 }
 
@@ -65,7 +68,7 @@ impl<'a> AssignParsed<'a> {
     /// # Note
     ///
     /// In the sequence of parser tokens this macro comes **after**
-    /// the expression which value will be assigns to macros variable.
+    /// the expression which value will be assigned to macros variable.
     pub fn new(id: &'a str) -> Self {
         Self { id }
     }
@@ -87,16 +90,62 @@ impl<'a> ParsedMacro for AssignParsed<'a> {
 #[cfg(test)]
 mod tests {
     use crate::macros::default::Assign;
-    use crate::macros::Macro;
-    use crate::tokenizer::Match;
-
+    use crate::macros::{ApplyMode, Macro};
+    use crate::parser;
+    use crate::parser::ParseState;
     #[test]
     fn test_match_input() {
-        let input = vec!["a = 10", "a = b", "a =", "10 = "];
-        let expected = vec![Some(3usize), Some(3usize), Some(3usize), None];
-        for (expected, input) in expected.into_iter().zip(input) {
-            let result: Match = Assign.match_input(input);
-            assert_eq!(expected, result);
+        let input_expected = &[
+            ("a = 10", Some(3usize)),
+            ("a = b", Some(3usize)),
+            ("a =", Some(3usize)),
+            // TODO v0.3: context aware tokenization
+            ("a=10", None),
+            ("a=b", None),
+            ("a=", Some(2usize)),
+            ("a==", Some(3usize)),
+            ("=", None),
+            // Rest of the cases are fine
+            ("a= b", Some(2usize)),
+            ("a= 10", Some(2usize)),
+            ("10= ", None),
+            ("10= ", None),
+            ("a", None),
+        ];
+        for (input, expected) in input_expected {
+            let result = Assign.match_input(input);
+            assert_eq!(result, *expected, "input was {}", input);
         }
+    }
+
+    #[test]
+    fn test_parse_ok() {
+        let input = &["a = ", "a="];
+        let expected_state = ParseState::Expression;
+        let expected_binding = ApplyMode::After;
+        for input in input {
+            let result = Assign.parse(input, ParseState::Expression);
+            assert!(result.is_ok(), "input = {}", input);
+            let result = result.unwrap();
+            assert_eq!(result.state_after, expected_state);
+            assert_eq!(result.mode, expected_binding);
+        }
+    }
+
+    #[test]
+    fn test_parse_err() {
+        let input = "a = ";
+        let result = Assign.parse(input, ParseState::Operator);
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err(), parser::Error::ExpectedExpression);
+    }
+
+    #[test]
+    #[should_panic]
+    fn test_parse_panic() {
+        let input = "1 won't bind";
+        Assign
+            .parse(input, ParseState::Expression)
+            .expect("Panics before");
     }
 }

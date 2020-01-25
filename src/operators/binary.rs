@@ -34,7 +34,11 @@ pub enum Associativity {
 
 impl Debug for BiOp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{{{}}}", self.token)
+        f.debug_struct("BiOp")
+            .field("token", &self.token)
+            .field("precedence", &self.precedence)
+            .field("associativity", &self.associativity)
+            .finish()
     }
 }
 
@@ -122,4 +126,26 @@ pub fn default_operators() -> Vec<BiOp> {
         DIVIDE.clone(),
         POWER.clone(),
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_debug() {
+        let op = BiOp {
+            token: "#".to_owned(),
+            precedence: 0,
+            associativity: Associativity::LEFT,
+            func: |_, _| 0.0,
+        };
+        let dbg = format!("{:?}", op);
+        assert!(dbg.contains("BiOp"));
+        assert!(dbg.contains("token") && dbg.contains("#"));
+        assert!(dbg.contains("precedence"));
+        assert!(dbg.contains(&format!("{:?}", 0usize)));
+        assert!(dbg.contains("associativity"));
+        assert!(dbg.contains(&format!("{:?}", Associativity::LEFT)));
+    }
 }

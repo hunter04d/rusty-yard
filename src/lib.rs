@@ -6,11 +6,8 @@
 //! See [evaluator](crate::evaluator) documentation to get started with high level api that allows you to evaluate strings directly.
 #![deny(missing_docs)]
 use functions::Func;
-use macros::Macro;
-use operators::{binary, unary};
-use operators::{BiOp, UOp};
-
-use crate::macros::default::Assign;
+use macros::{default::default_macros, Macro};
+use operators::{binary, unary, BiOp, UOp};
 
 // reason api not stable
 #[allow(clippy::implicit_hasher)]
@@ -58,9 +55,11 @@ impl Ctx {
     }
 
     /// Creates new default context that is similar to the one produced by [`default`](std::default::Default::default) but also has default macros enabled.
+    ///
+    /// Macros are formed from [`default_macros`](crate::macros::default::default_macros) function.
     pub fn default_with_macros() -> Self {
         Self {
-            macros: vec![Box::new(Assign)],
+            macros: default_macros(),
             ..Default::default()
         }
     }

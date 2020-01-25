@@ -44,9 +44,21 @@ fn to_parser_token<'a>(
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub enum ParseState {
     /// The state signaling that the next token is expected to be an expression
-    ExpectExpression,
+    Expression,
     /// The state signaling that the next token is expected to be an operator
-    ExpectOperator,
+    Operator,
+}
+
+impl ParseState {
+    fn expect(self, state_to_expect: ParseState) -> Result<(), Error> {
+        if self == state_to_expect {
+            Ok(())
+        } else if let Expression = self {
+            Err(Error::ExpectedExpression)
+        } else {
+            Err(Error::ExpectedOperator)
+        }
+    }
 }
 
 /// Parses the input tokens into steam of [`ParserTokens`](ParserToken) in Reverse polish notation order
@@ -54,54 +66,79 @@ pub fn parse<'a, 'tokens>(
     tokens: &'tokens [Token<'a>],
     ctx: &'a Ctx,
 ) -> Result<Vec<ParserToken<'a>>, Error> {
+    if tokens.is_empty() {
+        return Ok(Vec::new());
+    }
     let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
-    let mut parse_state: ParseState = ExpectExpression;
+    let mut parse_state: ParseState = Expression;
     let mut arity = Vec::new();
     let mut iter = tokens.iter().peekable();
     while let Some(current_token) = iter.next() {
         match *current_token {
             Token::Num(num) => {
+                parse_state.expect(Expression)?;
+                parse_state = Operator;
                 queue.push(ParserToken::Num(num));
-                parse_state = ExpectOperator;
             }
             Token::Id(id) => {
-                let next_stack_value: Option<OperatorStackValue> = find_uop(ctx, id, parse_state)
-                    .or_else(|| find_biop(ctx, id, &mut queue, &mut operator_stack))
-                    .or_else(|| find_func(ctx, id, parse_state));
-                match next_stack_value {
-                    // is variable
-                    None => {
-                        parse_state = ExpectOperator;
-                        queue.push(ParserToken::Id(id));
+                if let Some(u_op) = find_uop(ctx, id, parse_state) {
+                    operator_stack.push(OperatorStackValue::UOp(u_op));
+                } else if let Some(bi_op) = find_biop(ctx, id) {
+                    parse_state.expect(Operator)?;
+                    push_to_output(&mut queue, &mut operator_stack, bi_op);
+                    parse_state = Expression;
+                    operator_stack.push(OperatorStackValue::BiOp(bi_op));
+                } else if let Some(func) = find_func(ctx, id, parse_state) {
+                    if let Some(Token::OpenParen) = iter.peek() {
+                        arity.push(0usize);
+                        operator_stack.push(OperatorStackValue::Func(func))
+                    } else {
+                        // TODO v0.3: might be better to match id, to that fn(), and fn are different
+                        return Err(Error::NoLeftParenAfterFnId);
                     }
-                    // is operator
-                    Some(sv) => {
-                        if let OperatorStackValue::Func(_) = sv {
-                            if let Some(Token::OpenParen) = iter.peek() {
-                                arity.push(1usize);
-                            } else {
-                                return Err(Error::NoLeftParenAfterFnId);
-                            }
-                        }
-                        parse_state = ExpectExpression;
-                        operator_stack.push(sv);
-                    }
+                } else {
+                    // variable
+                    parse_state.expect(Expression)?;
+                    parse_state = Operator;
+                    queue.push(ParserToken::Id(id));
                 }
             }
             Token::OpenParen => {
-                if let ParseState::ExpectOperator = parse_state {
-                    return Err(Error::ExpectedOperator);
-                }
+                parse_state.expect(Expression)?;
                 operator_stack.push(OperatorStackValue::LeftParen);
             }
             Token::ClosedParen => {
-                pop_operator_stack(&mut operator_stack, &mut queue, &mut arity, true)?;
-                operator_stack.pop().unwrap();
+                if parse_state == Expression {
+                    // operator or left parent
+                    //  (10 + ) or ()
+                    // -------^-or--^
+                    // |
+                    // we are here
+                    if let Some(OperatorStackValue::LeftParen) = operator_stack.last() {
+                        // pop the left paren
+                        operator_stack.pop().unwrap();
+                    } else {
+                        // operator before right paren is an error
+                        return Err(Error::OperatorAtTheEnd);
+                    }
+                } else {
+                    pop_operator_stack(&mut operator_stack, &mut queue, &mut arity, true)?;
+                    // pop left paren
+                    operator_stack.pop().unwrap();
+
+                    if let Some(OperatorStackValue::Func(_)) = operator_stack.last() {
+                        let a = arity.last_mut().unwrap();
+                        *a += 1;
+                    }
+                }
+                parse_state = Operator;
             }
             Token::Comma => {
+                parse_state.expect(Operator)?;
+                parse_state = Expression;
                 pop_operator_stack(&mut operator_stack, &mut queue, &mut arity, false)?;
-                parse_state = ExpectExpression;
+
                 let a = arity.last_mut().ok_or(Error::CommaOutsideFn)?;
                 *a += 1;
             }
@@ -120,7 +157,7 @@ pub fn parse<'a, 'tokens>(
             }
         }
     }
-    if parse_state == ExpectExpression {
+    if let Expression = parse_state {
         return Err(Error::OperatorAtTheEnd);
     }
     while let Some(v) = operator_stack.pop() {
@@ -134,12 +171,40 @@ pub fn parse<'a, 'tokens>(
     Ok(queue)
 }
 
+fn push_to_output<'a>(
+    queue: &mut Vec<ParserToken<'a>>,
+    operator_stack: &mut Vec<OperatorStackValue<'a>>,
+    b_op: &BiOp,
+) {
+    while let Some(top_of_stack) = operator_stack.last() {
+        match *top_of_stack {
+            OperatorStackValue::UOp(op) => {
+                queue.push(ParserToken::UOp(op));
+                operator_stack.pop();
+            }
+            OperatorStackValue::BiOp(op)
+                if op.precedence > b_op.precedence
+                    || (op.precedence == b_op.precedence
+                        && op.associativity == Associativity::LEFT) =>
+            {
+                let pt = op.into();
+                queue.push(pt);
+                operator_stack.pop();
+            }
+            _ => {
+                break;
+            }
+        }
+    }
+}
+
 /// Parses the input string into a stream of [`ParsedTokens`](ParserToken).
 ///
 /// This tokenizes the input first using [`tokenizer::tokenize`](crate::tokenizer::tokenize)
 /// and then parses it using [`parse`](parse).
 ///
 /// This uses the ctx provided as the last parameter.
+#[cfg_attr(tarpaulin, skip)]
 pub fn parse_str<'a>(input: &'a str, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
     let tokens = tokenizer::tokenize(input, ctx);
     parse(&tokens, ctx)
@@ -169,13 +234,12 @@ fn pop_operator_stack<'a>(
         if let OperatorStackValue::LeftParen = v {
             found_left_paren = true;
             break;
-        } else {
-            // unwrap: safe because operator stack value is never LeftParen and is always present
-            let el = operator_stack.pop().unwrap();
-            let token = to_parser_token(el, arity).unwrap();
-            check_arity(&token)?;
-            queue.push(token);
         }
+        // unwrap: safe because operator stack value is never LeftParen and is always present
+        let el = operator_stack.pop().unwrap();
+        let token = to_parser_token(el, arity).unwrap();
+        check_arity(&token)?;
+        queue.push(token);
     }
     if found_left_paren || !expect_left_paren {
         Ok(())
@@ -184,54 +248,26 @@ fn pop_operator_stack<'a>(
     }
 }
 
-fn find_biop<'a, 'b>(
-    ctx: &'a Ctx,
-    id: &str,
-    queue: &mut Vec<ParserToken<'b>>,
-    operator_stack: &mut Vec<OperatorStackValue<'b>>,
-) -> Option<OperatorStackValue<'a>> {
-    // binary operator
-    let b_op = ctx.bi_ops.iter().find(|op| op.token == id)?;
-    while let Some(top_of_stack) = operator_stack.last() {
-        match *top_of_stack {
-            OperatorStackValue::UOp(op) => {
-                queue.push(ParserToken::UOp(op));
-                operator_stack.pop();
-            }
-            OperatorStackValue::BiOp(op)
-                if op.precedence > b_op.precedence
-                    || (op.precedence == b_op.precedence
-                        && op.associativity == Associativity::LEFT) =>
-            {
-                let pt = op.into();
-                queue.push(pt);
-                operator_stack.pop();
-            }
-            _ => {
-                break;
-            }
-        }
-    }
-    Some(OperatorStackValue::BiOp(b_op))
+#[inline]
+fn find_biop<'a>(ctx: &'a Ctx, id: &str) -> Option<&'a BiOp> {
+    ctx.bi_ops.iter().find(|op| op.token == id)
 }
 
-fn find_uop<'a>(ctx: &'a Ctx, id: &str, parse_state: ParseState) -> Option<OperatorStackValue<'a>> {
+#[inline]
+fn find_uop<'a>(ctx: &'a Ctx, id: &str, parse_state: ParseState) -> Option<&'a UOp> {
     let u_op = ctx.u_ops.iter().find(|op| op.token == id)?;
     match parse_state {
-        ExpectExpression => Some(OperatorStackValue::UOp(u_op)),
-        ExpectOperator => None,
+        Expression => Some(u_op),
+        Operator => None,
     }
 }
 
-fn find_func<'a>(
-    ctx: &'a Ctx,
-    id: &str,
-    parse_state: ParseState,
-) -> Option<OperatorStackValue<'a>> {
+#[inline]
+fn find_func<'a>(ctx: &'a Ctx, id: &str, parse_state: ParseState) -> Option<&'a Func> {
     let func = ctx.fns.iter().find(|op| op.token == id)?;
     match parse_state {
-        ExpectExpression => Some(OperatorStackValue::Func(func)),
-        ExpectOperator => None, // does this make sense?
+        Expression => Some(func),
+        Operator => None, // does this make sense?
     }
 }
 
@@ -270,29 +306,41 @@ mod tests {
         let bi_op = get_biop();
         let u_op = get_uop();
         let ctx = get_ctx();
-        let input = vec![
-            vec![Token::Num(10.0), Token::Id("bi_op"), Token::Id("10")],
-            vec![Token::Id("u_op"), Token::Num(10.0)],
-            vec![
-                Token::Id("a"),
-                Token::Id("bi_op"),
-                Token::Id("b"),
-                Token::Id("bi_op"),
-                Token::Id("c"),
-            ],
+        let input_expected = &[
+            (
+                vec![Token::Num(10.0), Token::Id("bi_op"), Token::Id("10")],
+                vec![Num(10.0), Id("10"), BiOp(&bi_op)],
+            ),
+            (
+                vec![Token::Id("u_op"), Token::Num(10.0)],
+                vec![Num(10.0), UOp(&u_op)],
+            ),
+            (
+                vec![
+                    Token::Id("a"),
+                    Token::Id("bi_op"),
+                    Token::Id("b"),
+                    Token::Id("bi_op"),
+                    Token::Id("c"),
+                ],
+                vec![Id("a"), Id("b"), BiOp(&bi_op), Id("c"), BiOp(&bi_op)],
+            ),
         ];
-        let expected: Vec<_> = vec![
-            vec![Num(10.0), Id("10"), BiOp(&bi_op)],
-            vec![Num(10.0), UOp(&u_op)],
-            vec![Id("a"), Id("b"), BiOp(&bi_op), Id("c"), BiOp(&bi_op)],
-        ];
-        for (expected, input) in expected.into_iter().zip(input) {
-            let actual = parse(&input, &ctx)
-                .expect("Parse succeeded")
-                .into_iter()
-                .collect::<Vec<_>>();
-            assert_eq!(expected, actual);
+        for (input, expected) in input_expected {
+            let actual = parse(&input, &ctx).expect("Parse succeeded");
+            assert_eq!(actual, *expected, "input was, {:?}", input);
         }
         Ok(())
+    }
+
+    #[test]
+    fn test_parse_bad_token() {
+        let s = "\x00".to_owned();
+        let ctx = &get_ctx();
+        let result = parse(&[Token::BadToken(s.clone())], &ctx).unwrap_err();
+        assert_eq!(
+            std::mem::discriminant(&result),
+            std::mem::discriminant(&Error::BadToken(s))
+        );
     }
 }

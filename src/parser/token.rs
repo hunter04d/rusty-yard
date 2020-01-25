@@ -28,6 +28,7 @@ pub enum ParserToken<'a> {
 }
 
 impl PartialEq for ParserToken<'_> {
+    #[cfg_attr(tarpaulin, skip)]
     fn eq(&self, other: &Self) -> bool {
         use ParserToken::*;
         if std::mem::discriminant(self) != std::mem::discriminant(other) {
@@ -45,25 +46,49 @@ impl PartialEq for ParserToken<'_> {
     }
 }
 
+impl From<f64> for ParserToken<'_> {
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    fn from(num: f64) -> Self {
+        ParserToken::Num(num)
+    }
+}
+
+impl<'a> From<&'a str> for ParserToken<'a> {
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
+    fn from(id: &'a str) -> Self {
+        ParserToken::Id(id)
+    }
+}
+
 impl<'a> From<&'a BiOp> for ParserToken<'a> {
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn from(op: &'a BiOp) -> Self {
         ParserToken::BiOp(op)
     }
 }
 
 impl<'a> From<&'a UOp> for ParserToken<'a> {
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn from(op: &'a UOp) -> Self {
         ParserToken::UOp(&op)
     }
 }
 
 impl<'a> From<(&'a Func, usize)> for ParserToken<'a> {
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn from(tuple: (&'a Func, usize)) -> Self {
         ParserToken::Func(tuple.0, tuple.1)
     }
 }
 
 impl<'a, Macro: ParsedMacro + 'a> From<Macro> for ParserToken<'a> {
+    #[inline]
+    #[cfg_attr(tarpaulin, skip)]
     fn from(m: Macro) -> Self {
         ParserToken::Macro(Box::new(m))
     }

@@ -17,7 +17,7 @@ pub struct UOp {
 
 impl Debug for UOp {
     fn fmt(&self, f: &mut Formatter) -> fmt::Result {
-        write!(f, "{{{}}}", self.token)
+        f.debug_struct("UOp").field("token", &self.token).finish()
     }
 }
 lazy_static! {
@@ -52,4 +52,19 @@ lazy_static! {
 /// This includes all operators from [`this`](self) module.
 pub fn default_operators() -> Vec<UOp> {
     vec![PLUS.clone(), NEGATE.clone()]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn test_debug() {
+        let op = UOp {
+            token: "#".to_owned(),
+            func: |_| 0.0,
+        };
+        let dbg = format!("{:?}", op);
+        assert!(dbg.contains("UOp"));
+        assert!(dbg.contains("token") && dbg.contains("#"));
+    }
 }

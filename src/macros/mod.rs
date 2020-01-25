@@ -32,6 +32,7 @@ impl Default for ApplyMode {
 /// The result of parsing the macro
 ///
 /// Contains information on how the parser should continue parsing after this macro has been parsed.
+#[derive(Debug)]
 pub struct MacroParse<'a> {
     pub(crate) result: Box<dyn ParsedMacro + 'a>,
     pub(crate) mode: ApplyMode,

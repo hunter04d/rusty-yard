@@ -139,6 +139,8 @@ fn eval_internal(
 /// let  result = eval(&[ParserToken::Num(3.0), ParserToken::Num(4.0), ParserToken::BiOp(&PLUS)]);
 /// assert_eq!(result, Ok(7.0));
 /// ```
+#[cfg_attr(tarpaulin, skip)]
+#[inline]
 pub fn eval(tokens: &[ParserToken]) -> Result {
     eval_internal(tokens, &mut HashMap::new(), &Ctx::default())
 }
@@ -167,6 +169,8 @@ pub fn eval(tokens: &[ParserToken]) -> Result {
 /// let result = eval_with_vars(&[ParserToken::Id("a"), ParserToken::Id("b"), ParserToken::BiOp(&PLUS)], &mut vars);
 /// assert_eq!(result, Ok(7.0));
 /// ```
+#[cfg_attr(tarpaulin, skip)]
+#[inline]
 pub fn eval_with_vars(tokens: &[ParserToken], variables: &mut HashMap<String, f64>) -> Result {
     eval_internal(tokens, variables, &Ctx::default())
 }
@@ -203,6 +207,8 @@ pub fn eval_with_vars(tokens: &[ParserToken], variables: &mut HashMap<String, f6
 /// assert_eq!(result, Ok(7.0));
 /// assert_eq!(vars["a"], 7.0);
 /// ```
+#[cfg_attr(tarpaulin, skip)]
+#[inline]
 pub fn eval_with_vars_and_ctx(
     tokens: &[ParserToken],
     variables: &mut HashMap<String, f64>,
@@ -224,6 +230,8 @@ pub fn eval_with_vars_and_ctx(
 /// let result = eval_str("3 + 4");
 /// assert_eq!(result, Ok(7.0));
 /// ```
+#[cfg_attr(tarpaulin, skip)]
+#[inline]
 pub fn eval_str(input: &str) -> Result {
     eval_str_with_vars_and_ctx(input, &mut HashMap::new(), &Ctx::default())
 }
@@ -244,6 +252,8 @@ pub fn eval_str(input: &str) -> Result {
 /// let result = eval_str_with_vars("a + b", &mut vars);
 /// assert_eq!(result, Ok(7.0));
 /// ```
+#[cfg_attr(tarpaulin, skip)]
+#[inline]
 pub fn eval_str_with_vars(input: &str, variables: &mut HashMap<String, f64>) -> Result {
     eval_str_with_vars_and_ctx(input, variables, &Ctx::default())
 }
@@ -269,6 +279,7 @@ pub fn eval_str_with_vars(input: &str, variables: &mut HashMap<String, f64>) -> 
 /// assert_eq!(result, Ok(7.0));
 /// assert_eq!(vars["a"], 7.0);
 /// ```
+#[cfg_attr(tarpaulin, skip)]
 pub fn eval_str_with_vars_and_ctx(
     input: &str,
     variables: &mut HashMap<String, f64>,
@@ -281,34 +292,43 @@ pub fn eval_str_with_vars_and_ctx(
 
 #[cfg(test)]
 mod tests {
-    use crate::functions::FN_SUM;
-    use crate::operators::binary::PLUS;
+    use crate::functions::{FN_SUB, FN_SUM};
+    use crate::operators::{binary::PLUS as B_PLUS, unary::PLUS as U_PLUS};
 
     use super::ParserToken::*;
     use super::*;
 
     // TODO: more tests cases
     #[test]
-    fn test_eval() -> std::result::Result<(), Error> {
+    fn test_eval() {
         let mut vars = HashMap::new();
 
         vars.insert("a".into(), 10.0);
         vars.insert("b".into(), 20.0);
         vars.insert("c".into(), 30.0);
 
-        let expected = vec![1.0, 10.0, 15.0, 3.0];
-
-        let input = vec![
-            vec![Num(1.0)],
-            vec![Id("a")],
-            vec![Id("a"), Num(5.0), BiOp(&PLUS)],
-            vec![Num(1.0), Num(1.0), Num(1.0), Func(&FN_SUM, 3)],
+        let input_expected = &[
+            (vec![Num(1.0)], Ok(1.0)),
+            (vec![Id("a")], Ok(10.0)),
+            (vec![Id("a"), Num(5.0), BiOp(&B_PLUS)], Ok(15.0)),
+            (
+                vec![Num(1.0), Num(1.0), Num(1.0), Func(&FN_SUM, 3)],
+                Ok(3.0),
+            ),
+            (vec![Num(1.0), UOp(&U_PLUS)], Ok(1.0)),
+            (
+                vec![Num(2.0), Num(1.0), Func(&FN_SUB, 1)],
+                Err(Error::ArityMismatch {
+                    id: "sub".to_owned(),
+                    expected: 2,
+                    actual: 1,
+                }),
+            ),
         ];
 
-        for (expected, input) in expected.into_iter().zip(input) {
-            let result = eval_with_vars(&input, &mut vars)?;
-            assert_eq!(expected, result);
+        for (input, expected) in input_expected {
+            let result = eval_with_vars(&input, &mut vars);
+            assert_eq!(result, *expected);
         }
-        Ok(())
     }
 }

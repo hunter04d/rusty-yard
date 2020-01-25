@@ -3,6 +3,8 @@ use std::io::{stdin, stdout, Write};
 
 use rusty_yard::{evaluator, Ctx};
 
+#[cfg_attr(tarpaulin, skip)]
+/// Simple read, eval, print loop
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut vars = HashMap::new();
     let ctx = Ctx::default_with_macros();
