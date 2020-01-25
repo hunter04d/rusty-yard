@@ -46,10 +46,10 @@ pub fn bench_nested_expression(c: &mut Criterion) {
     let ctx = Ctx::default();
     let mut eval = |s: &str| eval_str_with_vars_and_ctx(s, &mut vars, &ctx);
     let mut g = c.benchmark_group("nested");
-    g.bench_function("one operator", |b| {
+    g.bench_function("no functions", |b| {
         b.iter(|| eval(&no_fn));
     });
-    g.bench_function("two operators", |b| {
+    g.bench_function("using functions", |b| {
         b.iter(|| eval(&with_fn));
     });
 }

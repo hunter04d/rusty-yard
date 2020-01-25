@@ -69,6 +69,7 @@ impl<'a> AssignParsed<'a> {
     ///
     /// In the sequence of parser tokens this macro comes **after**
     /// the expression which value will be assigned to macros variable.
+    #[cfg_attr(tarpaulin, skip)]
     pub fn new(id: &'a str) -> Self {
         Self { id }
     }

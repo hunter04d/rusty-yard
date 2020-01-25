@@ -23,19 +23,16 @@ enum OperatorStackValue<'a> {
     LeftParen,
     BiOp(&'a BiOp),
     UOp(&'a UOp),
-    Func(&'a Func),
+    Func(&'a Func, usize),
     Macro(Box<dyn ParsedMacro + 'a>),
 }
 
-fn to_parser_token<'a>(
-    sv: OperatorStackValue<'a>,
-    arity: &mut Vec<usize>,
-) -> Result<ParserToken<'a>, &'static str> {
+fn to_parser_token<'a>(sv: OperatorStackValue<'a>) -> Result<ParserToken<'a>, &'static str> {
     match sv {
         OperatorStackValue::LeftParen => Err("Left Parent cannot be in output queue"),
         OperatorStackValue::BiOp(b) => Ok(ParserToken::BiOp(b)),
         OperatorStackValue::UOp(u) => Ok(ParserToken::UOp(u)),
-        OperatorStackValue::Func(f) => Ok(ParserToken::Func(f, arity.pop().unwrap())),
+        OperatorStackValue::Func(f, n_args) => Ok(ParserToken::Func(f, n_args)),
         OperatorStackValue::Macro(m) => Ok(ParserToken::Macro(m)),
     }
 }
@@ -72,14 +69,13 @@ pub fn parse<'a, 'tokens>(
     let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = Expression;
-    let mut arity = Vec::new();
     let mut iter = tokens.iter().peekable();
     while let Some(current_token) = iter.next() {
         match *current_token {
             Token::Num(num) => {
                 parse_state.expect(Expression)?;
                 parse_state = Operator;
-                queue.push(ParserToken::Num(num));
+                queue.push(num.into());
             }
             Token::Id(id) => {
                 if let Some(u_op) = find_uop(ctx, id, parse_state) {
@@ -91,8 +87,7 @@ pub fn parse<'a, 'tokens>(
                     operator_stack.push(OperatorStackValue::BiOp(bi_op));
                 } else if let Some(func) = find_func(ctx, id, parse_state) {
                     if let Some(Token::OpenParen) = iter.peek() {
-                        arity.push(0usize);
-                        operator_stack.push(OperatorStackValue::Func(func))
+                        operator_stack.push(OperatorStackValue::Func(func, 0usize))
                     } else {
                         // TODO v0.3: might be better to match id, to that fn(), and fn are different
                         return Err(Error::NoLeftParenAfterFnId);
@@ -101,7 +96,7 @@ pub fn parse<'a, 'tokens>(
                     // variable
                     parse_state.expect(Expression)?;
                     parse_state = Operator;
-                    queue.push(ParserToken::Id(id));
+                    queue.push(id.into());
                 }
             }
             Token::OpenParen => {
@@ -123,13 +118,12 @@ pub fn parse<'a, 'tokens>(
                         return Err(Error::OperatorAtTheEnd);
                     }
                 } else {
-                    pop_operator_stack(&mut operator_stack, &mut queue, &mut arity, true)?;
-                    // pop left paren
-                    operator_stack.pop().unwrap();
-
-                    if let Some(OperatorStackValue::Func(_)) = operator_stack.last() {
-                        let a = arity.last_mut().unwrap();
-                        *a += 1;
+                    let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)?;
+                    if !found_left_paren {
+                        return Err(Error::MismatchedRightParen);
+                    }
+                    if let Some(OperatorStackValue::Func(_, n_args)) = operator_stack.last_mut() {
+                        *n_args += 1;
                     }
                 }
                 parse_state = Operator;
@@ -137,10 +131,17 @@ pub fn parse<'a, 'tokens>(
             Token::Comma => {
                 parse_state.expect(Operator)?;
                 parse_state = Expression;
-                pop_operator_stack(&mut operator_stack, &mut queue, &mut arity, false)?;
-
-                let a = arity.last_mut().ok_or(Error::CommaOutsideFn)?;
-                *a += 1;
+                let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)?;
+                match operator_stack.last_mut() {
+                    Some(OperatorStackValue::Func(_, n_args)) if found_left_paren => {
+                        *n_args += 1;
+                        // return left paren into the stack
+                        operator_stack.push(OperatorStackValue::LeftParen);
+                    }
+                    _ => {
+                        return Err(Error::CommaOutsideFn);
+                    }
+                }
             }
             Token::Macro { defn, text } => {
                 let parse_result = defn.parse(text, parse_state)?;
@@ -160,15 +161,12 @@ pub fn parse<'a, 'tokens>(
     if let Expression = parse_state {
         return Err(Error::OperatorAtTheEnd);
     }
-    while let Some(v) = operator_stack.pop() {
-        if let OperatorStackValue::LeftParen = v {
-            return Err(Error::MismatchedLeftParen);
-        }
-        let token = to_parser_token(v, &mut arity).unwrap();
-        check_arity(&token)?;
-        queue.push(token);
+    let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)?;
+    if found_left_paren {
+        Err(Error::MismatchedLeftParen)
+    } else {
+        Ok(queue)
     }
-    Ok(queue)
 }
 
 fn push_to_output<'a>(
@@ -226,26 +224,17 @@ fn check_arity(token: &ParserToken) -> Result<(), Error> {
 fn pop_operator_stack<'a>(
     operator_stack: &mut Vec<OperatorStackValue<'a>>,
     queue: &mut Vec<ParserToken<'a>>,
-    arity: &mut Vec<usize>,
-    expect_left_paren: bool,
-) -> Result<(), Error> {
-    let mut found_left_paren = false;
-    while let Some(v) = operator_stack.last() {
+) -> Result<bool, Error> {
+    while let Some(v) = operator_stack.pop() {
         if let OperatorStackValue::LeftParen = v {
-            found_left_paren = true;
-            break;
+            return Ok(true);
         }
-        // unwrap: safe because operator stack value is never LeftParen and is always present
-        let el = operator_stack.pop().unwrap();
-        let token = to_parser_token(el, arity).unwrap();
+        // unwrap: safe because operator stack value is never LeftParen
+        let token = to_parser_token(v).unwrap();
         check_arity(&token)?;
         queue.push(token);
     }
-    if found_left_paren || !expect_left_paren {
-        Ok(())
-    } else {
-        Err(Error::MismatchedRightParen)
-    }
+    Ok(false)
 }
 
 #[inline]
