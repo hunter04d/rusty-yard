@@ -1,7 +1,6 @@
 use crate::functions::Func;
 use crate::macros::ParsedMacro;
 use crate::operators::{BiOp, UOp};
-use std::any::Any;
 
 /// Represents the parser token.
 ///
@@ -65,7 +64,7 @@ impl PartialEq for ParserToken<'_, '_> {
             (UOp(op1), UOp(op2)) => op1 == op2,
             (BiOp(op1), BiOp(op2)) => op1 == op2,
             (Func(f1, s1), Func(f2, s2)) => f1 == f2 && s1 == s2,
-            (Macro(m1), Macro(m2)) => m1.type_id() == m2.type_id(),
+            (Macro(_), Macro(_)) => unimplemented!(),
             _ => false,
         }
     }

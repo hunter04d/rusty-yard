@@ -1,5 +1,4 @@
 use crate::macros::Macro;
-use std::any::Any;
 
 /// Represents a macro token, part of [`Token::Macro`](Token::Macro)
 #[derive(Debug)]
@@ -58,9 +57,7 @@ impl PartialEq for Token<'_, '_> {
             (Id(s1), Id(s2)) => s1 == s2,
             (Num(f1), Num(f2)) => f1 == f2,
             (BadToken(b1), BadToken(b2)) => b1 == b2,
-            (Macro(m1), Macro(m2)) => {
-                m1.text == m2.text && m1.definition.type_id() == m2.definition.type_id()
-            }
+            (Macro(_), Macro(_)) => unimplemented!(),
             _ => false,
         }
     }
