@@ -20,14 +20,14 @@
 //! assert_eq!(tokenize("a + b", &Ctx::default()), vec![Token::Id("a"), Token::Id("+"), Token::Id("b")])
 //! ```
 //!
-//! However, a+b will just make one identifier:
-//! TODO: Is this a resanoble behaivior?
+//! "a+b" will as well:
 //!
 //! ```
 //! # use rusty_yard::tokenizer::{tokenize, Token};
 //! use rusty_yard::Ctx;
-//! assert_eq!(tokenize("a+b", &Ctx::default()), vec![Token::Id("a+b")])
+//! assert_eq!(tokenize("a+b", &Ctx::default()), vec![Token::Id("a"), Token::Id("+"), Token::Id("b")])
 //! ```
+//!
 //! # Note
 //!
 //! **[`Tokenizer`](crate::tokenizer) does not distinguish between different types of identifiers.**
@@ -40,21 +40,9 @@ use crate::macros::Macro;
 
 use super::Ctx;
 use crate::operators::{BiOp, UOp};
+use crate::tokenizer::token::MacroToken;
 
 mod token;
-
-#[allow(missing_docs)]
-pub fn get_token_text(token: &Token) -> String {
-    match token {
-        Token::OpenParen => String::from("("),
-        Token::ClosedParen => String::from(")"),
-        Token::Id(s) => String::from(*s),
-        Token::Num(n) => n.to_string(),
-        Token::BadToken(s) => format!("<BAD TOKEN>({})", s),
-        Token::Comma => String::from(","),
-        Token::Macro { defn, text } => format!("<MACRO {:?}>({})", defn, text),
-    }
-}
 
 /// Represents a match from one of the match functions
 ///
@@ -63,7 +51,8 @@ pub fn get_token_text(token: &Token) -> String {
 ///
 /// # Note for macros
 /// It is technically possible to have a 0 sized match to alter the behavior of existing token.
-pub type Match = Option<usize>;
+#[derive(Debug)]
+pub struct Match<T>(pub T, pub usize);
 
 /// Tokenizes the input string into Tokens.
 ///
@@ -73,62 +62,42 @@ pub type Match = Option<usize>;
 ///
 /// This function will panic is input in not an ascii string.\
 /// TODO: add unicode support.
-pub fn tokenize<'a>(input: &'a str, ctx: &'a Ctx) -> Vec<Token<'a>> {
+pub fn tokenize<'a, 'ctx>(input: &'a str, ctx: &'ctx Ctx) -> Vec<Token<'a, 'ctx>> {
     if !input.is_ascii() {
         panic!("Input contains non ascii characters");
     }
     let mut output = Vec::new();
-    let mut iterator = input.chars();
-    let mut index: usize = 0;
-    while let Some(ch) = iterator.next() {
-        if ch.is_ascii_whitespace() {
-            index += 1;
-            continue;
-        }
-        let mut consumed: usize = 1;
-        let next_token = match ch {
-            '(' => Token::OpenParen,
-            ')' => Token::ClosedParen,
-            ',' => Token::Comma,
-            _ => {
-                let text = &input[index..];
-                if let Some((m, n)) = match_macro(text, ctx) {
-                    consumed = n;
-                    Token::Macro {
-                        defn: m,
-                        text: &text[..n],
-                    }
-                } else if let Some(n) = match_number(text) {
-                    consumed = n;
-                    Token::Num(
-                        text[..n]
-                            .parse()
-                            .expect("Parsing a matched number should not fail"),
-                    )
-                } else if let Some(n) = match_op(text, ctx).or_else(|| match_id(text)) {
-                    consumed = n;
-                    Token::Id(&text[..n])
-                } else {
-                    Token::BadToken(ch.to_string())
-                }
-            }
+    let whitespace_to_skip = skip_whitespace(input);
+    let mut text = &input[whitespace_to_skip..];
+    while !text.is_empty() {
+        let (token, consumed) = if text.starts_with('(') {
+            (Token::OpenParen, '('.len_utf8())
+        } else if text.starts_with(')') {
+            (Token::ClosedParen, ')'.len_utf8())
+        } else if text.starts_with(',') {
+            (Token::Comma, ','.len_utf8())
+        } else if let Some(Match(m, c)) = match_macros(text, &ctx) {
+            let token = MacroToken {
+                text: &text[..c],
+                definition: m,
+            };
+            (Token::Macro(token), c)
+        } else if let Some(Match(n, c)) = match_number(text) {
+            (Token::Num(n), c)
+        } else if let Some(Match(id, c)) = match_op(text, ctx).or_else(|| match_id(text, ctx)) {
+            (Token::Id(id), c)
+        } else {
+            let c = text
+                .chars()
+                .take_while(|c| !c.is_ascii_whitespace())
+                .map(|c| c.len_utf8())
+                .sum();
+            (Token::BadToken(&text[..c]), c)
         };
-        // merge the trailing <Bad Token>s into one
-        let mut last_merged = false;
-        if let Some(last_token) = output.last_mut() {
-            if let (Token::BadToken(s1), Token::BadToken(s2)) = (last_token, &next_token) {
-                last_merged = true;
-                *s1 += s2;
-            }
-        }
-        if !last_merged {
-            output.push(next_token);
-        }
-        if consumed > 1 {
-            // Iteration consumes one char initially
-            iterator.nth(consumed - 2);
-        }
-        index += consumed;
+        output.push(token);
+        text = &text[consumed..];
+        let whitespace_to_skip = skip_whitespace(text);
+        text = &text[whitespace_to_skip..];
     }
     output
 }
@@ -141,47 +110,44 @@ pub fn tokenize<'a>(input: &'a str, ctx: &'a Ctx) -> Vec<Token<'a>> {
 /// Returns [`Some(length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't matched an identifier.
 #[allow(clippy::while_let_on_iterator)]
-pub fn match_id(text: &str) -> Match {
-    const DISALLOWED_CHARS: &str = "(),";
-    let is_disallowed = |ch: char| DISALLOWED_CHARS.chars().any(|v| v == ch);
-    let is_valid_first_char =
-        |ch: char| ch.is_ascii_graphic() && !ch.is_ascii_digit() && !is_disallowed(ch);
-    let is_valid_char = |ch: char| ch.is_ascii_graphic() && !is_disallowed(ch);
+pub fn match_id<'a>(text: &'a str, ctx: &'_ Ctx) -> Option<Match<&'a str>> {
+    fn is_disallowed(ch: &char) -> bool {
+        const DISALLOWED_CHARS: &[char] = &['(', ')', ','];
+        DISALLOWED_CHARS.iter().any(|v| v == ch)
+    }
+    fn is_valid_first_char(ch: &char) -> bool {
+        ch.is_ascii_graphic() && !ch.is_ascii_digit() && !is_disallowed(ch)
+    }
+    fn is_valid_char(ch: &char) -> bool {
+        ch.is_ascii_graphic() && !is_disallowed(ch)
+    }
 
     let mut iterator = text.chars();
-    if let Some(ch) = iterator.next() {
-        if is_valid_first_char(ch) {
-            let mut index = 1usize;
-            while let Some(ch) = iterator.next() {
-                if is_valid_char(ch) {
-                    index += 1;
-                    continue;
-                }
-                break;
-            }
-            return Some(index);
-        }
-    }
-    None
+    let first = iterator.next().filter(is_valid_first_char)?;
+    let full_len = first.len_utf8()
+        + iterator
+            .take_while(is_valid_char)
+            .map(char::len_utf8)
+            .sum::<usize>();
+    let text = &text[..full_len];
+    let len = ctx
+        .u_ops
+        .iter()
+        .find_map(|op| text.find(&op.token))
+        .or_else(|| ctx.bi_ops.iter().find_map(|op| text.find(&op.token)))
+        .unwrap_or(full_len);
+    Some(Match(&text[..len], len))
 }
 
 /// Matches one of the macros from 'ctx' against the start of input `text`.
 ///
 /// Returns [`Some(matched macro, length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't matched any of the macros.
-pub fn match_macro<'a>(text: &str, ctx: &'a Ctx) -> Option<(&'a dyn Macro, usize)> {
-    ctx.macros
-        .iter()
-        .find_map(|m| match_single_macro(text, m.as_ref()))
-}
-
-/// Matches single macro against the start of the `text`.
-///
-/// Returns [`Some(matched macro, length of the match)`](std::option::Option::Some) if we matched
-/// and [`None`](std::option::Option::None) when input hasn't matched this macro.
-#[inline]
-fn match_single_macro<'a>(text: &str, m: &'a dyn Macro) -> Option<(&'a dyn Macro, usize)> {
-    m.match_input(text).map(|len| (m, len))
+pub fn match_macros<'a>(text: &str, ctx: &'a Ctx) -> Option<Match<&'a dyn Macro>> {
+    ctx.macros.iter().find_map(|m| {
+        let Match((), c) = m.match_input(text, ctx)?;
+        Some(Match(m.as_ref(), c))
+    })
 }
 
 /// Matches the start of input `text` against either one of [Binary operators](crate::operators::binary) or
@@ -196,64 +162,62 @@ fn match_single_macro<'a>(text: &str, m: &'a dyn Macro) -> Option<(&'a dyn Macro
 ///
 /// In most cases this implementation detail does not matter.
 #[inline]
-pub fn match_op(text: &str, ctx: &Ctx) -> Match {
-    let matched_bi_op = match_bi_op(text, &ctx.bi_ops);
-    let matched_u_op = || match_u_op(text, &ctx.u_ops);
-    matched_bi_op.or_else(matched_u_op)
+pub fn match_op<'a>(text: &'a str, ctx: &Ctx) -> Option<Match<&'a str>> {
+    let matched_bi_op = match_bi_op(text, &ctx.bi_ops).map(|m| m.1);
+    let matched_u_op = || match_u_op(text, &ctx.u_ops).map(|m| m.1);
+    matched_bi_op
+        .or_else(matched_u_op)
+        .map(|c| Match(&text[..c], c))
 }
 
 /// Matches the start of the input `text` against one of [BiOps](crate::operators::binary)
 ///
 /// Returns [`Some(length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't matched any BiOp.
-pub fn match_bi_op(text: &str, bi_ops: &[BiOp]) -> Match {
+pub fn match_bi_op<'a>(text: &str, bi_ops: &'a [BiOp]) -> Option<Match<&'a BiOp>> {
     bi_ops
         .iter()
         .find(|op| text.starts_with(&op.token))
-        .map(|op| op.token.len())
+        .map(|op| Match(op, op.token.len()))
 }
 
 /// Matches the start of the input `text` against one of [UOps](crate::operators::unary)
 ///
 /// Returns [`Some(matched macro, length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't matched any UOp.
-pub fn match_u_op(text: &str, u_ops: &[UOp]) -> Match {
+pub fn match_u_op<'a>(text: &str, u_ops: &'a [UOp]) -> Option<Match<&'a UOp>> {
     u_ops
         .iter()
         .find(|op| text.starts_with(&op.token))
-        .map(|op| op.token.len())
+        .map(|op| Match(op, op.token.len()))
 }
 
 /// Matches the start of 'text' with the definition of number in this crate.
 ///
 /// Returns [`Some(length of the match)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't a number.
-#[allow(clippy::while_let_on_iterator)]
-pub fn match_number(text: &str) -> Match {
+pub fn match_number(text: &str) -> Option<Match<f64>> {
     let mut iterator = text.chars();
-    if let Some(ch) = iterator.next() {
+    let first_char = iterator.next().filter(char::is_ascii_digit)?;
+    let mut index = first_char.len_utf8();
+    let mut seen_dot = false;
+    for ch in iterator {
         if ch.is_ascii_digit() {
-            let mut index = 1usize;
-            let mut seen_dot = false;
-            while let Some(ch) = iterator.next() {
-                if ch.is_ascii_digit() {
-                    index += 1;
-                    continue;
-                }
-                if ch == '.' {
-                    if !seen_dot {
-                        seen_dot = true;
-                        index += 1;
-                        continue;
-                    }
-                    return None;
-                }
-                break;
-            }
-            return Some(index);
+            index += ch.len_utf8();
+            continue;
         }
+        if ch == '.' {
+            if seen_dot {
+                return None;
+            }
+            seen_dot = true;
+            index += ch.len_utf8();
+            continue;
+        }
+        break;
     }
-    None
+    let num: f64 = text[..index].parse().ok()?;
+    Some(Match(num, index))
 }
 
 /// Matches the start of 'text' string `str_to_match`.
@@ -261,9 +225,9 @@ pub fn match_number(text: &str) -> Match {
 /// Returns [`Some(number_of_chars_matched)`](std::option::Option::Some) if we matched
 /// and [`None`](std::option::Option::None) when input hasn't match the string.
 #[cfg_attr(tarpaulin, skip)]
-pub fn match_str(text: &str, str_to_match: &str) -> Match {
+pub fn match_str<'a>(text: &'a str, str_to_match: &str) -> Option<Match<&'a str>> {
     if text.starts_with(str_to_match) {
-        Some(str_to_match.len())
+        Some(Match(&text[..str_to_match.len()], str_to_match.len()))
     } else {
         None
     }
@@ -275,7 +239,8 @@ pub fn match_str(text: &str, str_to_match: &str) -> Match {
 pub fn skip_whitespace(text: &str) -> usize {
     text.chars()
         .take_while(|ch| ch.is_ascii_whitespace())
-        .count()
+        .map(|ch| ch.len_utf8())
+        .sum()
 }
 
 #[cfg(test)]
@@ -292,14 +257,15 @@ mod tests {
             let res = match_number(&str);
             prop_assert!(res.is_some());
             let res = res.unwrap();
-            prop_assert_eq!(str.len(), res);
+            prop_assert_eq!(str.len(), res.1);
         }
         #[test]
         fn test_match_ids(s in r#"[a-zA-z](?:[a-zA-Z]|[0-9])*"#) {
-            let res = match_id(&s);
+            let ctx = &Ctx::empty();
+            let res = match_id(&s, ctx);
             prop_assert!(res.is_some());
             let res = res.unwrap();
-            prop_assert_eq!(s.len(), res);
+            prop_assert_eq!(s.len(), res.1);
         }
     }
 
@@ -311,6 +277,7 @@ mod tests {
             ("1.0 op 1.0", vec![Num(1.0), Id("op"), Num(1.0)]),
             ("- 1.0", vec![Id("-"), Num(1.0)]),
             ("pi()", vec![Id("pi"), OpenParen, ClosedParen]),
+            ("1 + ", vec![Num(1.0), Id("+")]),
         ];
         for (input, expected) in input_expected {
             let output = tokenize(input, &ctx);
@@ -322,17 +289,6 @@ mod tests {
     fn test_match_number_fails() {
         let str = "not a number";
         let res = match_number(str);
-        assert_eq!(res, None);
-    }
-
-    #[test]
-    fn test_bad_token_merging() {
-        let s = "\x01\x01";
-        let ctx = Ctx::empty();
-        let res = tokenize(s, &ctx);
-        assert_eq!(1, res.len());
-        if let Token::BadToken(bad_token) = &res[0] {
-            assert_eq!(*bad_token, s);
-        }
+        assert!(res.is_none())
     }
 }

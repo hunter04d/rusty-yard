@@ -46,7 +46,7 @@ pub enum Error {
     /// # Note
     ///
     /// This error is likely picked up in ParserError case, however it still can occur if you pass the tokens manually to one of `eval` functions.
-    #[error("Arity of function {id} mismatched during evaluation: expected: {expected}, actual: {actual}")]
+    #[error("Arity of function {id} mismatched during evaluation: expected: {expected:?}, actual: {actual}")]
     ArityMismatch {
         /// Identifier of the mismatched function
         id: String,
@@ -95,13 +95,14 @@ fn eval_internal(
                 eval_stack.push(eval);
             }
             ParserToken::Func(func, call_args) => {
-                let arity = func.arity;
-                if arity != 0 && arity != call_args {
-                    return Err(Error::ArityMismatch {
-                        id: func.token.clone(),
-                        expected: arity,
-                        actual: call_args,
-                    });
+                if let Some(arity) = func.arity {
+                    if arity != call_args {
+                        return Err(Error::ArityMismatch {
+                            id: func.token.clone(),
+                            expected: arity,
+                            actual: call_args,
+                        });
+                    }
                 }
                 let temp = &eval_stack[(eval_stack.len() - call_args)..];
                 let eval = func.call(temp).expect(
@@ -328,7 +329,7 @@ mod tests {
 
         for (input, expected) in input_expected {
             let result = eval_with_vars(&input, &mut vars);
-            assert_eq!(result, *expected);
+            assert_eq!(result, *expected, "input {:?}", input);
         }
     }
 }

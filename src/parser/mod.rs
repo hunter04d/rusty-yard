@@ -12,28 +12,32 @@ use super::functions::Func;
 use super::macros::{ApplyMode, ParsedMacro};
 use super::operators::binary::Associativity;
 use super::operators::{BiOp, UOp};
-use super::tokenizer::{self, get_token_text, Token};
+use super::tokenizer::{self, Token};
 use super::Ctx;
+use crate::macros::MacroParse;
 
 mod error;
 mod token;
 
 #[derive(Debug)]
-enum OperatorStackValue<'a> {
+enum OperatorStackValue<'a, 'ctx> {
     LeftParen,
-    BiOp(&'a BiOp),
-    UOp(&'a UOp),
-    Func(&'a Func, usize),
+    BiOp(&'ctx BiOp),
+    UOp(&'ctx UOp),
+    Func(&'ctx Func, usize),
     Macro(Box<dyn ParsedMacro + 'a>),
 }
 
-fn to_parser_token<'a>(sv: OperatorStackValue<'a>) -> Result<ParserToken<'a>, &'static str> {
+fn to_parser_token<'a, 'ctx>(
+    sv: OperatorStackValue<'a, 'ctx>,
+) -> Result<ParserToken<'a, 'ctx>, &'static str> {
+    use OperatorStackValue::*;
     match sv {
-        OperatorStackValue::LeftParen => Err("Left Parent cannot be in output queue"),
-        OperatorStackValue::BiOp(b) => Ok(ParserToken::BiOp(b)),
-        OperatorStackValue::UOp(u) => Ok(ParserToken::UOp(u)),
-        OperatorStackValue::Func(f, n_args) => Ok(ParserToken::Func(f, n_args)),
-        OperatorStackValue::Macro(m) => Ok(ParserToken::Macro(m)),
+        LeftParen => Err("Left Parent cannot be in output queue"),
+        BiOp(b) => Ok(ParserToken::BiOp(b)),
+        UOp(u) => Ok(ParserToken::UOp(u)),
+        Func(f, n_args) => Ok(ParserToken::Func(f, n_args)),
+        Macro(m) => Ok(ParserToken::Macro(m)),
     }
 }
 
@@ -59,10 +63,10 @@ impl ParseState {
 }
 
 /// Parses the input tokens into steam of [`ParserTokens`](ParserToken) in Reverse polish notation order
-pub fn parse<'a, 'tokens>(
-    tokens: &'tokens [Token<'a>],
-    ctx: &'a Ctx,
-) -> Result<Vec<ParserToken<'a>>, Error> {
+pub fn parse<'a, 'ctx>(
+    tokens: &[Token<'a, 'ctx>],
+    ctx: &'ctx Ctx,
+) -> Result<Vec<ParserToken<'a, 'ctx>>, Error> {
     if tokens.is_empty() {
         return Ok(Vec::new());
     }
@@ -71,11 +75,11 @@ pub fn parse<'a, 'tokens>(
     let mut parse_state: ParseState = Expression;
     let mut iter = tokens.iter().peekable();
     while let Some(current_token) = iter.next() {
-        match *current_token {
+        match &*current_token {
             Token::Num(num) => {
                 parse_state.expect(Expression)?;
                 parse_state = Operator;
-                queue.push(num.into());
+                queue.push(ParserToken::Num(*num));
             }
             Token::Id(id) => {
                 if let Some(u_op) = find_uop(ctx, id, parse_state) {
@@ -96,7 +100,7 @@ pub fn parse<'a, 'tokens>(
                     // variable
                     parse_state.expect(Expression)?;
                     parse_state = Operator;
-                    queue.push(id.into());
+                    queue.push(ParserToken::Id(id));
                 }
             }
             Token::OpenParen => {
@@ -106,13 +110,13 @@ pub fn parse<'a, 'tokens>(
             Token::ClosedParen => {
                 if parse_state == Expression {
                     // operator or left parent
-                    //  (10 + ) or ()
-                    // -------^-or--^
+                    //  (10 + ) or <fn_name>()
+                    // -------^-or-----------^
                     // |
                     // we are here
-                    if let Some(OperatorStackValue::LeftParen) = operator_stack.last() {
-                        // pop the left paren
-                        operator_stack.pop().unwrap();
+
+                    // pop the left paren
+                    if let Some(OperatorStackValue::LeftParen) = operator_stack.pop() {
                     } else {
                         // operator before right paren is an error
                         return Err(Error::OperatorAtTheEnd);
@@ -143,18 +147,20 @@ pub fn parse<'a, 'tokens>(
                     }
                 }
             }
-            Token::Macro { defn, text } => {
-                let parse_result = defn.parse(text, parse_state)?;
-                parse_state = parse_result.state_after;
-                match parse_result.mode {
-                    ApplyMode::Before => queue.push(ParserToken::Macro(parse_result.result)),
-                    ApplyMode::After => {
-                        operator_stack.push(OperatorStackValue::Macro(parse_result.result))
-                    }
+            Token::Macro(m) => {
+                let MacroParse {
+                    result,
+                    mode,
+                    state_after,
+                } = m.definition.parse(m.text, ctx, parse_state)?;
+                parse_state = state_after;
+                match mode {
+                    ApplyMode::Before => queue.push(ParserToken::Macro(result)),
+                    ApplyMode::After => operator_stack.push(OperatorStackValue::Macro(result)),
                 };
             }
-            ref token => {
-                return Err(Error::BadToken(get_token_text(token)));
+            Token::BadToken(token) => {
+                return Err(Error::BadToken(String::from(*token)));
             }
         }
     }
@@ -169,9 +175,9 @@ pub fn parse<'a, 'tokens>(
     }
 }
 
-fn push_to_output<'a>(
-    queue: &mut Vec<ParserToken<'a>>,
-    operator_stack: &mut Vec<OperatorStackValue<'a>>,
+fn push_to_output<'a, 'ctx>(
+    queue: &mut Vec<ParserToken<'a, 'ctx>>,
+    operator_stack: &mut Vec<OperatorStackValue<'a, 'ctx>>,
     b_op: &BiOp,
 ) {
     while let Some(top_of_stack) = operator_stack.last() {
@@ -203,27 +209,32 @@ fn push_to_output<'a>(
 ///
 /// This uses the ctx provided as the last parameter.
 #[cfg_attr(tarpaulin, skip)]
-pub fn parse_str<'a>(input: &'a str, ctx: &'a Ctx) -> Result<Vec<ParserToken<'a>>, Error> {
+pub fn parse_str<'a, 'ctx>(
+    input: &'a str,
+    ctx: &'ctx Ctx,
+) -> Result<Vec<ParserToken<'a, 'ctx>>, Error> {
     let tokens = tokenizer::tokenize(input, ctx);
     parse(&tokens, ctx)
 }
 
 fn check_arity(token: &ParserToken) -> Result<(), Error> {
     if let ParserToken::Func(func, n_args) = token {
-        if func.arity != 0 && func.arity != *n_args {
-            return Err(Error::ArityMismatch {
-                id: func.token.to_owned(),
-                expected: func.arity,
-                actual: *n_args,
-            });
+        if let Some(arity) = func.arity {
+            if arity != *n_args {
+                return Err(Error::ArityMismatch {
+                    id: func.token.to_owned(),
+                    expected: arity,
+                    actual: *n_args,
+                });
+            }
         }
     }
     Ok(())
 }
 
-fn pop_operator_stack<'a>(
-    operator_stack: &mut Vec<OperatorStackValue<'a>>,
-    queue: &mut Vec<ParserToken<'a>>,
+fn pop_operator_stack<'a, 'ctx>(
+    operator_stack: &mut Vec<OperatorStackValue<'a, 'ctx>>,
+    queue: &mut Vec<ParserToken<'a, 'ctx>>,
 ) -> Result<bool, Error> {
     while let Some(v) = operator_stack.pop() {
         if let OperatorStackValue::LeftParen = v {
@@ -326,7 +337,7 @@ mod tests {
     fn test_parse_bad_token() {
         let s = "\x00".to_owned();
         let ctx = &get_ctx();
-        let result = parse(&[Token::BadToken(s.clone())], &ctx).unwrap_err();
+        let result = parse(&[Token::BadToken(&s)], &ctx).unwrap_err();
         assert_eq!(
             std::mem::discriminant(&result),
             std::mem::discriminant(&Error::BadToken(s))

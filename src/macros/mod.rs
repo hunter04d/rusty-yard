@@ -14,11 +14,27 @@ pub mod default;
 /// Specifies how the macro should be parsed in relation to other tokens.
 #[derive(Debug, Eq, PartialEq, Copy, Clone)]
 pub enum ApplyMode {
-    /// The macro will be put directly into output queue at the same time as it was parsed.
+    /// The macro will be put directly into output queue immediately after it was parsed
+    ///
+    /// # Example
+    ///
+    /// ```text
+    /// .macro is some macro
+    /// input = ".macro 120"
+    /// the parsed token stream = "<Macro>(.macro) <Num>(120)"
+    /// ```
     Before,
     /// The macro will be put into operator stack.
     ///
     /// Expression after the macro will be evaluated first by [`evaluator`](crate::evaluator).
+    ///
+    /// # Example
+    ///
+    /// ```text
+    /// .macro is some macro
+    /// input = ".macro 120"
+    /// the parsed token stream = "<Num>(120) Macro>(.macro)"
+    /// ```
     After,
 }
 
@@ -70,7 +86,7 @@ pub trait Macro: Debug {
     ///
     /// Returns [`Some(length of the match)`](std::option::Option::Some) if the start of the `input` matched this macro
     /// and [`None`](std::option::Option::None) when input hasn't matched this macro.
-    fn match_input(&self, input: &str) -> Match;
+    fn match_input(&self, input: &str, ctx: &Ctx) -> Option<Match<()>>;
 
     /// Parse this macro
     ///
@@ -80,6 +96,7 @@ pub trait Macro: Debug {
     fn parse<'a>(
         &self,
         input: &'a str,
+        ctx: &Ctx,
         current_state: ParseState,
     ) -> Result<MacroParse<'a>, parser::Error>;
 }

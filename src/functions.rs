@@ -5,17 +5,18 @@
 //! # Example
 //! ```
 //! # use std::collections::HashMap;
+//! # use std::f64;
 //! use rusty_yard::{Ctx,functions::Func, evaluator::eval_str_with_vars_and_ctx};
 //!
 //! let exp = Func {
 //!    token: "exp".to_owned(),
-//!    arity: 1,
+//!    arity: 1.into(),
 //!    func: |args| args[0].exp()
 //! };
 //! let mut vars = HashMap::new();
 //! let mut ctx = Ctx::empty();
 //! ctx.fns.push(exp);
-//! assert_eq!(eval_str_with_vars_and_ctx("exp(1.0)", &mut vars, &ctx), Ok(std::f64::consts::E));
+//! assert_eq!(eval_str_with_vars_and_ctx("exp(1.0)", &mut vars, &ctx), Ok(f64::consts::E));
 //! ```
 //!
 //! # Note
@@ -38,15 +39,14 @@ pub struct Func {
     /// Arity of the function.
     ///
     /// Set to 0 to make the function variadic.
-    //TODO: 0 args function are missing this is a design flaw.
-    pub arity: usize,
+    pub arity: Option<usize>,
 
     /// The pointer to the function that implements the behaviour of the function.
     ///
     /// # Note
     ///
     /// [`evaluator`](crate::evaluator) will never pass any other number of parameters to the function other than arity.
-    /// However, if the function is variadic `arity == 0` then any number of parameters,
+    /// However, if the function is variadic `arity == None` then any number of parameters,
     /// **including** 0 might be passed to the function by the evaluator.
     pub func: fn(&[f64]) -> f64,
 }
@@ -68,15 +68,16 @@ impl Func {
     /// returns [`Ok`](std::result::Result::Ok),
     /// otherwise [`Err`](std::result::Result::Err) with [`function::Error`](Error) type is returned.
     pub fn call(&self, args: &[f64]) -> Result<f64, Error> {
-        if self.arity != 0 && args.len() != self.arity {
-            Err(Error {
-                expected: self.arity,
-                actual: args.len(),
-            })
-        } else {
-            let func = self.func;
-            Ok(func(args))
+        if let Some(arity) = self.arity {
+            if args.len() != arity {
+                return Err(Error {
+                    expected: arity,
+                    actual: args.len(),
+                });
+            }
         }
+        let func = self.func;
+        Ok(func(args))
     }
 }
 
@@ -134,7 +135,7 @@ lazy_static! {
     /// ```
     pub static ref FN_MAX: Func = Func {
         token: "max".to_owned(),
-        arity: 2,
+        arity: 2.into(),
         func: |args| {
             let arg1 = args[0];
             let arg2 = args[1];
@@ -151,7 +152,7 @@ lazy_static! {
     /// ```
     pub static ref FN_SUM: Func = Func {
         token: "sum".to_owned(),
-        arity: 0,
+        arity: None,
         func: |args| args.iter().sum(),
     };
 
@@ -164,7 +165,7 @@ lazy_static! {
     /// ```
     pub static ref FN_PROD: Func = Func {
         token: "prod".to_owned(),
-        arity: 0,
+        arity: None,
         func: |args| args.iter().product(),
     };
 
@@ -177,7 +178,7 @@ lazy_static! {
     /// ```
     pub static ref FN_SUB: Func = Func {
         token: "sub".to_owned(),
-        arity: 2,
+        arity: 2.into(),
         func: |args| {
             let arg1 = args[0];
             let arg2 = args[1];
@@ -206,7 +207,7 @@ mod tests {
     fn test_debug() {
         let func = Func {
             token: "#".to_owned(),
-            arity: 0,
+            arity: 0.into(),
             func: |_| 0.0,
         };
         let dbg = format!("{:?}", func);
@@ -221,7 +222,7 @@ mod tests {
     fn test_call() {
         let func = Func {
             token: "#".to_owned(),
-            arity: 1,
+            arity: 1.into(),
             func: |_| 0.0,
         };
         assert_eq!(func.call(&[1.0]), Ok(0.0));
@@ -244,7 +245,7 @@ mod tests {
     fn test_call_variadic() {
         let func = Func {
             token: "#".to_owned(),
-            arity: 0,
+            arity: None,
             func: |_| 0.0,
         };
         assert_eq!(func.call(&[]), Ok(0.0));

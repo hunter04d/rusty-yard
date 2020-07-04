@@ -48,7 +48,7 @@ pub enum Error {
     ///
     /// # Example
     ///
-    /// 1 + + 1
+    /// 1 + * 1
     /// ----^
     /// |
     /// expression is expected

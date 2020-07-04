@@ -1,6 +1,6 @@
 [package]
 name = "rusty_yard"
-version = "0.2.2"
+version = "0.3.1"
 authors = ["hunter04d <hunter04d@gmail.com>"]
 edition = "2018"
 
@@ -12,8 +12,8 @@ lazy_static = "1.4"
 thiserror = "1.0"
 
 [dev-dependencies]
-proptest = "0.9"
-criterion = "0.3.0"
+proptest = "0.10"
+criterion = "0.3"
 
 [[bench]]
 name = "full"
