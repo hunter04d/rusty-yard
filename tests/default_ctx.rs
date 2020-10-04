@@ -52,15 +52,21 @@ fn test_evaluation_results_bi_ops() {
         ("1 * (2 + 2)", Ok(4.0)),
         ("(2 ^ 3) ^ 2", Ok(64.0)),
         ("", Err(Other)),
-        ("1 + ", Err(ParserError(parser::Error::OperatorAtTheEnd))),
-        ("+ 1", Err(ParserError(parser::Error::ExpectedExpression))),
-        ("1 1", Err(ParserError(parser::Error::ExpectedOperator))),
-        ("a a", Err(ParserError(parser::Error::ExpectedOperator))),
-        ("1 a", Err(ParserError(parser::Error::ExpectedOperator))),
-        ("a 1", Err(ParserError(parser::Error::ExpectedOperator))),
+        (
+            "1 + ",
+            Err(ParserError(parser::ErrorKind::OperatorAtTheEnd)),
+        ),
+        (
+            "+ 1",
+            Err(ParserError(parser::ErrorKind::ExpectedExpression)),
+        ),
+        ("1 1", Err(ParserError(parser::ErrorKind::ExpectedOperator))),
+        ("a a", Err(ParserError(parser::ErrorKind::ExpectedOperator))),
+        ("1 a", Err(ParserError(parser::ErrorKind::ExpectedOperator))),
+        ("a 1", Err(ParserError(parser::ErrorKind::ExpectedOperator))),
         (
             "1 + + 1",
-            Err(ParserError(parser::Error::ExpectedExpression)),
+            Err(ParserError(parser::ErrorKind::ExpectedExpression)),
         ),
     ];
 
@@ -112,15 +118,15 @@ fn test_evaluation_results_funcs() {
         //TODO: v0.3 this should change
         (
             "sum + 10",
-            Err(ParserError(parser::Error::NoLeftParenAfterFnId)),
+            Err(ParserError(parser::ErrorKind::NoLeftParenAfterFnId)),
         ),
         (
             "sum(10 + )",
-            Err(ParserError(parser::Error::OperatorAtTheEnd)),
+            Err(ParserError(parser::ErrorKind::OperatorAtTheEnd)),
         ),
         (
             "sub(1)",
-            Err(ParserError(parser::Error::ArityMismatch {
+            Err(ParserError(parser::ErrorKind::ArityMismatch {
                 id: "sub".to_owned(),
                 expected: 2,
                 actual: 1,
@@ -128,11 +134,11 @@ fn test_evaluation_results_funcs() {
         ),
         (
             "(1 + 1))",
-            Err(ParserError(parser::Error::MismatchedRightParen)),
+            Err(ParserError(parser::ErrorKind::MismatchedRightParen)),
         ),
         (
             "((1 + 1)",
-            Err(ParserError(parser::Error::MismatchedLeftParen)),
+            Err(ParserError(parser::ErrorKind::MismatchedLeftParen)),
         ),
     ];
     for (input, expected) in input_expected_pair {

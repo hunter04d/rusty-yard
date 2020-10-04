@@ -1,8 +1,69 @@
+use crate::tokenizer;
+use crate::Pos;
+use std::io;
+use std::io::Write;
 use thiserror::Error;
+
+/// Represents a parser error with the position in the token stream
+/// where that error has happened
+#[derive(PartialEq, Debug, Error)]
+#[error("{kind}")]
+pub struct Error {
+    /// Position of an error in the token stream
+    pub pos: Pos,
+    /// Kind of error
+    pub kind: ErrorKind,
+}
+
+impl Error {
+    /// Creates new error at the specified position
+    pub fn new(kind: ErrorKind, pos: Pos) -> Self {
+        Self { pos, kind }
+    }
+
+    /// Reports this error to the writer
+    pub fn report_to(
+        &self,
+        writer: &mut impl Write,
+        tokens: &[tokenizer::Token],
+    ) -> io::Result<()> {
+        let mut offset = 0usize;
+        let mut add_offset = |i: usize, s: &str| {
+            if i < self.pos.0 {
+                offset += s.chars().count();
+            }
+        };
+        let mut token_size = 0;
+        write!(writer, "|")?;
+        for (i, text) in tokens.iter().map(|t| t.token_text()).enumerate() {
+            add_offset(i, &text);
+            if i == self.pos.0 {
+                token_size = text.chars().count()
+            }
+            write!(writer, "{}", text)?;
+            if i != tokens.len() - 1 {
+                write!(writer, " ")?;
+                add_offset(i, " ");
+            }
+        }
+        writeln!(writer)?;
+        write!(writer, "|")?;
+        for _ in 0..offset {
+            write!(writer, " ")?;
+        }
+        for _ in 0..token_size {
+            write!(writer, "^")?;
+        }
+        writeln!(writer)?;
+        writeln!(writer, "|")?;
+        writeln!(writer, "= {}", self.kind)?;
+        Ok(())
+    }
+}
 
 /// Represents the error that a parser can output
 #[derive(Error, Debug, PartialEq)]
-pub enum Error {
+pub enum ErrorKind {
     /// left paren has not been found after identifier that represents a function
     #[error("Expected left paren after function id")]
     NoLeftParenAfterFnId,
@@ -58,4 +119,15 @@ pub enum Error {
     /// Parser found a comma outside function
     #[error("Comma can only be used in functions, arity stack is empty")]
     CommaOutsideFn,
+
+    /// Parser found empty parens that are not part of a function call
+    #[error("Found empty parens that are not part of a function call")]
+    EmptyParensNotFnCall,
+}
+
+impl ErrorKind {
+    /// Enhances this [`ErrorKind`](ErrorKind) with position information
+    pub fn with_pos(self, pos: Pos) -> Error {
+        Error { pos, kind: self }
+    }
 }

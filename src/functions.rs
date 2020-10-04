@@ -38,7 +38,7 @@ pub struct Func {
     pub token: String,
     /// Arity of the function.
     ///
-    /// Set to 0 to make the function variadic.
+    /// Set to [`None`](std::option::Option::None) to make the function variadic.
     pub arity: Option<usize>,
 
     /// The pointer to the function that implements the behaviour of the function.

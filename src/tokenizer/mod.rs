@@ -112,7 +112,7 @@ pub fn tokenize<'a, 'ctx>(input: &'a str, ctx: &'ctx Ctx) -> Vec<Token<'a, 'ctx>
 #[allow(clippy::while_let_on_iterator)]
 pub fn match_id<'a>(text: &'a str, ctx: &'_ Ctx) -> Option<Match<&'a str>> {
     fn is_disallowed(ch: &char) -> bool {
-        const DISALLOWED_CHARS: &[char] = &['(', ')', ','];
+        const DISALLOWED_CHARS: &[char] = &['(', ')', ',', '='];
         DISALLOWED_CHARS.iter().any(|v| v == ch)
     }
     fn is_valid_first_char(ch: &char) -> bool {

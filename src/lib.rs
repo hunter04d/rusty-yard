@@ -8,6 +8,8 @@
 use functions::Func;
 use macros::{default::default_macros, Macro};
 use operators::{binary, unary, BiOp, UOp};
+use std::fmt;
+use std::fmt::{Display, Formatter};
 
 // reason api not stable
 #[allow(clippy::implicit_hasher)]
@@ -80,5 +82,15 @@ impl Default for Ctx {
             fns: functions::default_functions(),
             macros: Vec::new(),
         }
+    }
+}
+
+/// Position is the token stream
+#[derive(Copy, Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+pub struct Pos(pub usize);
+
+impl Display for Pos {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "({})", self.0)
     }
 }

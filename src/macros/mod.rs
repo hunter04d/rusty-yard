@@ -98,7 +98,7 @@ pub trait Macro: Debug {
         input: &'a str,
         ctx: &Ctx,
         current_state: ParseState,
-    ) -> Result<MacroParse<'a>, parser::Error>;
+    ) -> Result<MacroParse<'a>, parser::ErrorKind>;
 }
 
 /// Represents the Parsed macro.

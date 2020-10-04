@@ -42,9 +42,9 @@ impl Macro for Assign {
         input: &'a str,
         ctx: &Ctx,
         current_state: ParseState,
-    ) -> Result<MacroParse<'a>, parser::Error> {
+    ) -> Result<MacroParse<'a>, parser::ErrorKind> {
         if let ParseState::Operator = current_state {
-            Err(parser::Error::ExpectedExpression)
+            Err(parser::ErrorKind::ExpectedExpression)
         } else {
             let Match(id, len) = match_id(input, ctx).unwrap();
             let len = id.find('=').unwrap_or(len);
@@ -145,7 +145,7 @@ mod tests {
         let ctx = &Ctx::empty();
         let result = Assign.parse(input, ctx, ParseState::Operator);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), parser::Error::ExpectedExpression);
+        assert_eq!(result.unwrap_err(), parser::ErrorKind::ExpectedExpression);
     }
 
     #[test]

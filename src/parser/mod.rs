@@ -4,7 +4,7 @@
 //! into the stream of [`ParserTokens`](ParserToken) in [reverse polish notation](https://en.wikipedia.org/wiki/Reverse_Polish_notation).
 //!
 //! The parser implementation uses the [`context`](crate::Ctx) to categorize input tokens of [`Token::Id`](crate::tokenizer::Token::Id) into VariableId, Function, Binary Operator and others.
-pub use error::Error;
+pub use error::{Error, ErrorKind};
 pub use token::ParserToken;
 use ParseState::*;
 
@@ -15,6 +15,7 @@ use super::operators::{BiOp, UOp};
 use super::tokenizer::{self, Token};
 use super::Ctx;
 use crate::macros::MacroParse;
+use crate::Pos;
 
 mod error;
 mod token;
@@ -51,13 +52,19 @@ pub enum ParseState {
 }
 
 impl ParseState {
-    fn expect(self, state_to_expect: ParseState) -> Result<(), Error> {
+    fn expect(self, state_to_expect: ParseState, pos: Pos) -> Result<(), Error> {
         if self == state_to_expect {
             Ok(())
         } else if let Expression = self {
-            Err(Error::ExpectedExpression)
+            Err(Error {
+                pos,
+                kind: ErrorKind::ExpectedExpression,
+            })
         } else {
-            Err(Error::ExpectedOperator)
+            Err(Error {
+                pos,
+                kind: ErrorKind::ExpectedOperator,
+            })
         }
     }
 }
@@ -73,11 +80,15 @@ pub fn parse<'a, 'ctx>(
     let mut queue = Vec::new();
     let mut operator_stack: Vec<OperatorStackValue> = Vec::new();
     let mut parse_state: ParseState = Expression;
-    let mut iter = tokens.iter().peekable();
-    while let Some(current_token) = iter.next() {
+    let mut iter = tokens
+        .iter()
+        .enumerate()
+        .map(|(i, t)| (Pos(i), t))
+        .peekable();
+    while let Some((pos, current_token)) = iter.next() {
         match &*current_token {
             Token::Num(num) => {
-                parse_state.expect(Expression)?;
+                parse_state.expect(Expression, pos)?;
                 parse_state = Operator;
                 queue.push(ParserToken::Num(*num));
             }
@@ -85,46 +96,60 @@ pub fn parse<'a, 'ctx>(
                 if let Some(u_op) = find_uop(ctx, id, parse_state) {
                     operator_stack.push(OperatorStackValue::UOp(u_op));
                 } else if let Some(bi_op) = find_biop(ctx, id) {
-                    parse_state.expect(Operator)?;
+                    parse_state.expect(Operator, pos)?;
                     push_to_output(&mut queue, &mut operator_stack, bi_op);
                     parse_state = Expression;
                     operator_stack.push(OperatorStackValue::BiOp(bi_op));
                 } else if let Some(func) = find_func(ctx, id, parse_state) {
-                    if let Some(Token::OpenParen) = iter.peek() {
+                    if let Some((_, Token::OpenParen)) = iter.peek() {
                         operator_stack.push(OperatorStackValue::Func(func, 0usize))
                     } else {
                         // TODO v0.3: might be better to match id, to that fn(), and fn are different
-                        return Err(Error::NoLeftParenAfterFnId);
+                        return Err(ErrorKind::NoLeftParenAfterFnId.with_pos(pos));
                     }
                 } else {
                     // variable
-                    parse_state.expect(Expression)?;
+                    parse_state.expect(Expression, pos)?;
                     parse_state = Operator;
                     queue.push(ParserToken::Id(id));
                 }
             }
             Token::OpenParen => {
-                parse_state.expect(Expression)?;
+                parse_state.expect(Expression, pos)?;
                 operator_stack.push(OperatorStackValue::LeftParen);
             }
             Token::ClosedParen => {
                 if parse_state == Expression {
-                    // operator or left parent
-                    //  (10 + ) or <fn_name>()
-                    // -------^-or-----------^
+                    // operator or left parent or empty parens
+                    // (10 + )
+                    // |-----^
+                    // |or
+                    // |<fn_name>()
+                    // |----------^
+                    // |or
+                    // |()
+                    // |-^
                     // |
-                    // we are here
+                    // =we are here
 
                     // pop the left paren
                     if let Some(OperatorStackValue::LeftParen) = operator_stack.pop() {
+                        if let Some(OperatorStackValue::Func(_, _)) = operator_stack.last() {
+                            let func_token =
+                                to_parser_token(operator_stack.pop().unwrap()).unwrap();
+                            queue.push(func_token);
+                        } else {
+                            return Err(ErrorKind::EmptyParensNotFnCall.with_pos(pos));
+                        }
                     } else {
                         // operator before right paren is an error
-                        return Err(Error::OperatorAtTheEnd);
+                        return Err(ErrorKind::OperatorAtTheEnd.with_pos(pos));
                     }
                 } else {
-                    let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)?;
+                    let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)
+                        .map_err(|e| e.with_pos(pos))?;
                     if !found_left_paren {
-                        return Err(Error::MismatchedRightParen);
+                        return Err(ErrorKind::MismatchedRightParen.with_pos(pos));
                     }
                     if let Some(OperatorStackValue::Func(_, n_args)) = operator_stack.last_mut() {
                         *n_args += 1;
@@ -133,9 +158,10 @@ pub fn parse<'a, 'ctx>(
                 parse_state = Operator;
             }
             Token::Comma => {
-                parse_state.expect(Operator)?;
+                parse_state.expect(Operator, pos)?;
                 parse_state = Expression;
-                let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)?;
+                let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)
+                    .map_err(|e| e.with_pos(pos))?;
                 match operator_stack.last_mut() {
                     Some(OperatorStackValue::Func(_, n_args)) if found_left_paren => {
                         *n_args += 1;
@@ -143,7 +169,7 @@ pub fn parse<'a, 'ctx>(
                         operator_stack.push(OperatorStackValue::LeftParen);
                     }
                     _ => {
-                        return Err(Error::CommaOutsideFn);
+                        return Err(ErrorKind::CommaOutsideFn.with_pos(pos));
                     }
                 }
             }
@@ -152,7 +178,10 @@ pub fn parse<'a, 'ctx>(
                     result,
                     mode,
                     state_after,
-                } = m.definition.parse(m.text, ctx, parse_state)?;
+                } = m
+                    .definition
+                    .parse(m.text, ctx, parse_state)
+                    .map_err(|e| e.with_pos(pos))?;
                 parse_state = state_after;
                 match mode {
                     ApplyMode::Before => queue.push(ParserToken::Macro(result)),
@@ -160,16 +189,18 @@ pub fn parse<'a, 'ctx>(
                 };
             }
             Token::BadToken(token) => {
-                return Err(Error::BadToken(String::from(*token)));
+                return Err(ErrorKind::BadToken(String::from(*token)).with_pos(pos));
             }
         }
     }
+    let end_pos = Pos(tokens.len() - 1);
     if let Expression = parse_state {
-        return Err(Error::OperatorAtTheEnd);
+        return Err(ErrorKind::OperatorAtTheEnd.with_pos(end_pos));
     }
-    let found_left_paren = pop_operator_stack(&mut operator_stack, &mut queue)?;
+    let found_left_paren =
+        pop_operator_stack(&mut operator_stack, &mut queue).map_err(|e| e.with_pos(end_pos))?;
     if found_left_paren {
-        Err(Error::MismatchedLeftParen)
+        Err(ErrorKind::MismatchedLeftParen.with_pos(end_pos))
     } else {
         Ok(queue)
     }
@@ -217,11 +248,11 @@ pub fn parse_str<'a, 'ctx>(
     parse(&tokens, ctx)
 }
 
-fn check_arity(token: &ParserToken) -> Result<(), Error> {
+fn check_arity(token: &ParserToken) -> Result<(), ErrorKind> {
     if let ParserToken::Func(func, n_args) = token {
         if let Some(arity) = func.arity {
             if arity != *n_args {
-                return Err(Error::ArityMismatch {
+                return Err(ErrorKind::ArityMismatch {
                     id: func.token.to_owned(),
                     expected: arity,
                     actual: *n_args,
@@ -235,7 +266,7 @@ fn check_arity(token: &ParserToken) -> Result<(), Error> {
 fn pop_operator_stack<'a, 'ctx>(
     operator_stack: &mut Vec<OperatorStackValue<'a, 'ctx>>,
     queue: &mut Vec<ParserToken<'a, 'ctx>>,
-) -> Result<bool, Error> {
+) -> Result<bool, ErrorKind> {
     while let Some(v) = operator_stack.pop() {
         if let OperatorStackValue::LeftParen = v {
             return Ok(true);
@@ -302,7 +333,7 @@ mod tests {
 
     // TODO: more tests cases
     #[test]
-    fn test_parse() -> Result<(), Error> {
+    fn test_parse() -> Result<(), ErrorKind> {
         let bi_op = get_biop();
         let u_op = get_uop();
         let ctx = get_ctx();
@@ -340,7 +371,7 @@ mod tests {
         let result = parse(&[Token::BadToken(&s)], &ctx).unwrap_err();
         assert_eq!(
             std::mem::discriminant(&result),
-            std::mem::discriminant(&Error::BadToken(s))
+            std::mem::discriminant(&ErrorKind::BadToken(s))
         );
     }
 }

@@ -39,7 +39,7 @@ impl Token<'_, '_> {
             ClosedParen => String::from(")"),
             Id(s) => String::from(*s),
             Num(n) => n.to_string(),
-            BadToken(s) => format!("<BAD TOKEN>({})", s),
+            BadToken(s) => s.to_string(),
             Comma => String::from(","),
             Macro(MacroToken { text, definition }) => format!("<MACRO {:?}>({})", definition, text),
         }
