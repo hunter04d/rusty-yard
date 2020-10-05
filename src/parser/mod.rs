@@ -134,7 +134,8 @@ pub fn parse<'a, 'ctx>(
 
                     // pop the left paren
                     if let Some(OperatorStackValue::LeftParen) = operator_stack.pop() {
-                        if let Some(OperatorStackValue::Func(_, _)) = operator_stack.last() {
+                        if let Some(OperatorStackValue::Func(f, n_args)) = operator_stack.last() {
+                            check_arity(f, *n_args).map_err(|e| e.with_pos(pos))?;
                             let func_token =
                                 to_parser_token(operator_stack.pop().unwrap()).unwrap();
                             queue.push(func_token);
@@ -248,16 +249,14 @@ pub fn parse_str<'a, 'ctx>(
     parse(&tokens, ctx)
 }
 
-fn check_arity(token: &ParserToken) -> Result<(), ErrorKind> {
-    if let ParserToken::Func(func, n_args) = token {
-        if let Some(arity) = func.arity {
-            if arity != *n_args {
-                return Err(ErrorKind::ArityMismatch {
-                    id: func.token.to_owned(),
-                    expected: arity,
-                    actual: *n_args,
-                });
-            }
+fn check_arity(f: &Func, n_args: usize) -> Result<(), ErrorKind> {
+    if let Some(arity) = f.arity {
+        if arity != n_args {
+            return Err(ErrorKind::ArityMismatch {
+                id: f.token.to_owned(),
+                expected: arity,
+                actual: n_args,
+            });
         }
     }
     Ok(())
@@ -273,7 +272,9 @@ fn pop_operator_stack<'a, 'ctx>(
         }
         // unwrap: safe because operator stack value is never LeftParen
         let token = to_parser_token(v).unwrap();
-        check_arity(&token)?;
+        if let ParserToken::Func(f, n_args) = &token {
+            check_arity(f, *n_args)?;
+        }
         queue.push(token);
     }
     Ok(false)
@@ -286,9 +287,8 @@ fn find_biop<'a>(ctx: &'a Ctx, id: &str) -> Option<&'a BiOp> {
 
 #[inline]
 fn find_uop<'a>(ctx: &'a Ctx, id: &str, parse_state: ParseState) -> Option<&'a UOp> {
-    let u_op = ctx.u_ops.iter().find(|op| op.token == id)?;
     match parse_state {
-        Expression => Some(u_op),
+        Expression => ctx.u_ops.iter().find(|op| op.token == id),
         Operator => None,
     }
 }
